@@ -19,7 +19,6 @@ package exec
 import (
 	"os/exec"
 	"strings"
-	"github.com/golang/glog"
 )
 
 func absPath(cmd string) (string, error) {
@@ -43,7 +42,6 @@ func buildCommand(cmd string, args ...string) (*exec.Cmd, error) {
 }
 
 func RunCommand(cmd string, args ...string) ([]string, error) {
-	glog.V(4).Infof("Running cmd: %s %s", cmd, args)
 	command, err := buildCommand(cmd, args...)
 	if err != nil {
 		return nil, err
@@ -55,5 +53,3 @@ func RunCommand(cmd string, args ...string) ([]string, error) {
 	}
 	return strings.Split(strings.TrimSpace(string(output)), "\n"), nil
 }
-
-

@@ -20,10 +20,10 @@ import (
 	"net"
 	"net/http"
 
-	"kubestack/pkg/common"
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/networkprovider"
 	"k8s.io/kubernetes/pkg/networkprovider/providers/remote"
+	"kubestack/pkg/common"
 )
 
 // KubeHandler forwards requests and responses between the docker daemon and the plugin.
@@ -270,8 +270,6 @@ func (h *KubeHandler) DeleteNetwork(req *remote.DeleteNetworkRequest) common.Res
 }
 
 func (h *KubeHandler) GetLoadBalancer(req *remote.GetLoadBalancerRequest) common.Response {
-	glog.V(4).Infof("GetLoadBalancer with request %v", req)
-
 	var resp common.Response
 	lb, err := h.driver.GetLoadBalancer(req.Name)
 	if err != nil {
@@ -280,7 +278,6 @@ func (h *KubeHandler) GetLoadBalancer(req *remote.GetLoadBalancerRequest) common
 		resp.Result = lb
 	}
 
-	glog.V(4).Infof("GetLoadBalancer result %v", resp)
 	return resp
 }
 

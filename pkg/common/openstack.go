@@ -20,13 +20,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"net/http"
+	"os"
 
 	"github.com/docker/distribution/uuid"
 	"time"
 
-	"kubestack/pkg/plugins"
 	"code.google.com/p/gcfg"
 	"github.com/rackspace/gophercloud"
 	"github.com/rackspace/gophercloud/openstack"
@@ -43,6 +42,7 @@ import (
 	"github.com/rackspace/gophercloud/openstack/networking/v2/ports"
 	"github.com/rackspace/gophercloud/openstack/networking/v2/subnets"
 	"github.com/rackspace/gophercloud/pagination"
+	"kubestack/pkg/plugins"
 
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/networkprovider"
@@ -52,8 +52,8 @@ import (
 )
 
 const (
-	podNamePrefix 			= "kube"
-	securitygroupName       = "kube-securitygroup-default"
+	podNamePrefix     = "kube"
+	securitygroupName = "kube-securitygroup-default"
 
 	ServiceAffinityNone     = "None"
 	ServiceAffinityClientIP = "ClientIP"
@@ -182,7 +182,6 @@ func NewOpenStack(config io.Reader) (*OpenStack, error) {
 			os.Plugin = plugin
 		}
 	}
-
 
 	return &os, nil
 }
@@ -505,7 +504,7 @@ func (os *OpenStack) ensureSecurityGroup(tenantID string) (string, error) {
 
 	opts := groups.ListOpts{
 		TenantID: tenantID,
-		Name: securitygroupName,
+		Name:     securitygroupName,
 	}
 	pager := groups.List(os.network, opts)
 	err := pager.EachPage(func(page pagination.Page) (bool, error) {
@@ -528,7 +527,7 @@ func (os *OpenStack) ensureSecurityGroup(tenantID string) (string, error) {
 	// If securitygroup doesn't exist, create a new one
 	if securitygroup == nil {
 		securitygroup, err = groups.Create(os.network, groups.CreateOpts{
-			Name: securitygroupName,
+			Name:     securitygroupName,
 			TenantID: tenantID,
 		}).Extract()
 
@@ -539,8 +538,8 @@ func (os *OpenStack) ensureSecurityGroup(tenantID string) (string, error) {
 
 	var secGroupsRules int
 	listopts := rules.ListOpts{
-		TenantID: tenantID,
-		Direction: rules.DirIngress,
+		TenantID:   tenantID,
+		Direction:  rules.DirIngress,
 		SecGroupID: securitygroup.ID,
 	}
 	rulesPager := rules.List(os.network, listopts)
@@ -563,18 +562,18 @@ func (os *OpenStack) ensureSecurityGroup(tenantID string) (string, error) {
 	if secGroupsRules == 0 {
 		// create egress rule
 		_, err = rules.Create(os.network, rules.CreateOpts{
-			TenantID: tenantID,
+			TenantID:   tenantID,
 			SecGroupID: securitygroup.ID,
-			Direction: rules.DirEgress,
-			EtherType: rules.Ether4,
+			Direction:  rules.DirEgress,
+			EtherType:  rules.Ether4,
 		}).Extract()
 
 		// create ingress rule
 		_, err := rules.Create(os.network, rules.CreateOpts{
-			TenantID: tenantID,
+			TenantID:   tenantID,
 			SecGroupID: securitygroup.ID,
-			Direction: rules.DirIngress,
-			EtherType: rules.Ether4,
+			Direction:  rules.DirIngress,
+			EtherType:  rules.Ether4,
 		}).Extract()
 		if err != nil {
 			return "", err
@@ -593,10 +592,10 @@ func (os *OpenStack) CreatePort(networkID, tenantID, portName string) (*ports.Po
 	}
 
 	opts := ports.CreateOpts{
-		NetworkID:    	networkID,
-		Name:         	portName,
-		AdminStateUp: 	ports.Up,
-		TenantID:     	tenantID,
+		NetworkID:      networkID,
+		Name:           portName,
+		AdminStateUp:   ports.Up,
+		TenantID:       tenantID,
 		HostID:         getHostName(),
 		DeviceID:       uuid.Generate().String(),
 		DeviceOwner:    fmt.Sprintf("container:%s", getHostName()),
@@ -1182,7 +1181,7 @@ func (os *OpenStack) CheckTenantID(tenantID string) (bool, error) {
 	return found, err
 }
 
-func (os *OpenStack) BuildPortName(podName, namespace, networkID string) string  {
+func (os *OpenStack) BuildPortName(podName, namespace, networkID string) string {
 	return podNamePrefix + "_" + podName + "_" + namespace + "_" + networkID
 }
 
@@ -1241,7 +1240,7 @@ func (os *OpenStack) TeardownPod(podName, namespace, podInfraContainerID string,
 		return err
 	}
 
-	if port== nil {
+	if port == nil {
 		glog.Warningf("Port %s already deleted", portName)
 		return nil
 	}
