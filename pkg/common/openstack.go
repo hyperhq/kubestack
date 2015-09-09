@@ -338,8 +338,9 @@ func (os *OpenStack) CreateNetwork(network *networkprovider.Network) error {
 
 	// create router
 	routerOpts := routers.CreateOpts{
-		Name:     network.Name,
-		TenantID: network.TenantID,
+		Name:        network.Name,
+		TenantID:    network.TenantID,
+		GatewayInfo: &routers.GatewayInfo{NetworkID: os.ExtNetID},
 	}
 	osRouter, err := routers.Create(os.network, routerOpts).Extract()
 	if err != nil {
@@ -616,7 +617,7 @@ func (os *OpenStack) BindPortToFloatingip(portID, floatingIPAddress, tenantID st
 	opts := floatingips.CreateOpts{
 		FloatingNetworkID: os.ExtNetID,
 		TenantID:          tenantID,
-		FixedIP:           floatingIPAddress,
+		FloatingIP:        floatingIPAddress,
 		PortID:            portID,
 	}
 	_, err := floatingips.Create(os.network, opts).Extract()
@@ -999,9 +1000,9 @@ func (os *OpenStack) CreateLoadBalancer(loadBalancer *networkprovider.LoadBalanc
 		Persistence:  persistence,
 		TenantID:     loadBalancer.TenantID,
 	}
-	if loadBalancer.Vip != "" {
-		createOpts.Address = loadBalancer.Vip
-	}
+	//if loadBalancer.Vip != "" {
+	//	createOpts.Address = loadBalancer.Vip
+	//}
 
 	vip, err := vips.Create(os.network, createOpts).Extract()
 	if err != nil {
@@ -1016,6 +1017,11 @@ func (os *OpenStack) CreateLoadBalancer(loadBalancer *networkprovider.LoadBalanc
 	if len(loadBalancer.ExternalIPs) > 0 {
 		err := os.BindPortToFloatingip(vip.PortID, loadBalancer.ExternalIPs[0], vip.TenantID)
 		if err != nil {
+			vips.Delete(os.network, vip.ID)
+			if mon != nil {
+				monitors.Delete(os.network, mon.ID)
+			}
+			pools.Delete(os.network, pool.ID)
 			return "", err
 		}
 	}
