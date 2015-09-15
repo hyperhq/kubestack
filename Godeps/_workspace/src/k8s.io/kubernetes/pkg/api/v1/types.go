@@ -277,6 +277,15 @@ type VolumeSource struct {
 	// RBD represents a Rados Block Device mount on the host that shares a pod's lifetime.
 	// More info: http://releases.k8s.io/HEAD/examples/rbd/README.md
 	RBD *RBDVolumeSource `json:"rbd,omitempty"`
+	// Cinder represents a cinder volume attached and mounted on kubelets host machine
+	// More info: http://releases.k8s.io/HEAD/examples/mysql-cinder-pd/README.md
+	Cinder *CinderVolumeSource `json:"cinder,omitempty"`
+
+	// CephFS represents a Ceph FS mount on the host that shares a pod's lifetime
+	CephFS *CephFSVolumeSource `json:"cephfs,omitempty"`
+
+	// DownwardAPI represents downward API about the pod that should populate this volume
+	DownwardAPI *DownwardAPIVolumeSource `json:"downwardAPI,omitempty"`
 }
 
 // PersistentVolumeClaimVolumeSource references the user's PVC in the same namespace.
@@ -322,6 +331,11 @@ type PersistentVolumeSource struct {
 	// ISCSI represents an ISCSI Disk resource that is attached to a
 	// kubelet's host machine and then exposed to the pod. Provisioned by an admin.
 	ISCSI *ISCSIVolumeSource `json:"iscsi,omitempty"`
+	// Cinder represents a cinder volume attached and mounted on kubelets host machine
+	// More info: http://releases.k8s.io/HEAD/examples/mysql-cinder-pd/README.md
+	Cinder *CinderVolumeSource `json:"cinder,omitempty"`
+	// CephFS represents a Ceph FS mount on the host that shares a pod's lifetime
+	CephFS *CephFSVolumeSource `json:"cephfs,omitempty"`
 }
 
 // PersistentVolume (PV) is a storage resource provisioned by an administrator.
@@ -405,7 +419,7 @@ type PersistentVolumeList struct {
 	ListMeta `json:"metadata,omitempty"`
 	// List of persistent volumes.
 	// More info: http://releases.k8s.io/HEAD/docs/user-guide/persistent-volumes.md
-	Items []PersistentVolume `json:"items,omitempty"`
+	Items []PersistentVolume `json:"items"`
 }
 
 // PersistentVolumeClaim is a user's request for and claim to a persistent volume
@@ -433,7 +447,7 @@ type PersistentVolumeClaimList struct {
 	ListMeta `json:"metadata,omitempty"`
 	// A list of persistent volume claims.
 	// More info: http://releases.k8s.io/HEAD/docs/user-guide/persistent-volumes.md#persistentvolumeclaims
-	Items []PersistentVolumeClaim `json:"items,omitempty"`
+	Items []PersistentVolumeClaim `json:"items"`
 }
 
 // PersistentVolumeClaimSpec describes the common attributes of storage devices
@@ -567,6 +581,44 @@ type RBDVolumeSource struct {
 	// ReadOnly here will force the ReadOnly setting in VolumeMounts.
 	// Defaults to false.
 	// More info: http://releases.k8s.io/HEAD/examples/rbd/README.md#how-to-use-it
+	ReadOnly bool `json:"readOnly,omitempty"`
+}
+
+// CinderVolumeSource represents a cinder volume resource in Openstack.
+// A Cinder volume must exist before mounting to a container.
+// The volume must also be in the same region as the kubelet.
+type CinderVolumeSource struct {
+	// volume id used to identify the volume in cinder
+	// More info: http://releases.k8s.io/HEAD/examples/mysql-cinder-pd/README.md
+	VolumeID string `json:"volumeID"`
+	// Required: Filesystem type to mount.
+	// Must be a filesystem type supported by the host operating system.
+	// Only ext3 and ext4 are allowed
+	// More info: http://releases.k8s.io/HEAD/examples/mysql-cinder-pd/README.md
+	FSType string `json:"fsType,omitempty"`
+	// Optional: Defaults to false (read/write). ReadOnly here will force
+	// the ReadOnly setting in VolumeMounts.
+	// More info: http://releases.k8s.io/HEAD/examples/mysql-cinder-pd/README.md
+	ReadOnly bool `json:"readOnly,omitempty"`
+}
+
+// CephFSVolumeSource represents a Ceph Filesystem Mount that lasts the lifetime of a pod
+type CephFSVolumeSource struct {
+	// Required: Monitors is a collection of Ceph monitors
+	// More info: http://releases.k8s.io/HEAD/examples/cephfs/README.md#how-to-use-it
+	Monitors []string `json:"monitors"`
+	// Optional: User is the rados user name, default is admin
+	// More info: http://releases.k8s.io/HEAD/examples/cephfs/README.md#how-to-use-it
+	User string `json:"user,omitempty"`
+	// Optional: SecretFile is the path to key ring for User, default is /etc/ceph/user.secret
+	// More info: http://releases.k8s.io/HEAD/examples/cephfs/README.md#how-to-use-it
+	SecretFile string `json:"secretFile,omitempty"`
+	// Optional: SecretRef is reference to the authentication secret for User, default is empty.
+	// More info: http://releases.k8s.io/HEAD/examples/cephfs/README.md#how-to-use-it
+	SecretRef *LocalObjectReference `json:"secretRef,omitempty"`
+	// Optional: Defaults to false (read/write). ReadOnly here will force
+	// the ReadOnly setting in VolumeMounts.
+	// More info: http://releases.k8s.io/HEAD/examples/cephfs/README.md#how-to-use-it
 	ReadOnly bool `json:"readOnly,omitempty"`
 }
 
@@ -1393,8 +1445,8 @@ const (
 	// to 'NodePort' type.
 	ServiceTypeLoadBalancer ServiceType = "LoadBalancer"
 
-	// ServiceTypeNetworkProvider means a service and its clusterIP will be created
-	// by networkprovider,
+	// ServiceTypeNetworkProvider means a service's external load-balancer will be
+	// created by networkprovider.
 	ServiceTypeNetworkProvider ServiceType = "NetworkProvider"
 )
 
@@ -1888,19 +1940,21 @@ const (
 
 // Subnet is a description of a subnet
 type Subnet struct {
-	CIDR    string `json:"cidr" description:"subnet cidr"`
-	Gateway string `json:"gateway" description:"subnet gateway"`
+	// CIDR of this subnet
+	CIDR string `json:"cidr"`
+	// Gateway of this subnet
+	Gateway string `json:"gateway"`
 }
 
 // NetworkSpec is a description of a network
 type NetworkSpec struct {
 	// There must be at least one subnet in a network
 	// Subnets and ProviderNetworkID must not be provided together
-	Subnets map[string]Subnet `json:"subnets,omitempty" description:"list of subnets"`
+	Subnets map[string]Subnet `json:"subnets,omitempty"`
 
 	// Network's ID of provider network
 	// ProviderNetworkID and Subnets must not be provided together
-	ProviderNetworkID string `json:"providerNetworkID,omitempty"  description:"provider network ID"`
+	ProviderNetworkID string `json:"providerNetworkID,omitempty"`
 
 	// TenantID is the tenant ID of network provider
 	TenantID string `json:"tenantID"`
@@ -1908,22 +1962,27 @@ type NetworkSpec struct {
 
 // Network describes a network
 type Network struct {
-	TypeMeta   `json:",inline"`
-	ObjectMeta `json:"metadata,omitempty" description:"standard object metadata; see http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#metadata"`
+	TypeMeta `json:",inline"`
+	// Standard object's metadata.
+	// More info: http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#metadata
+	ObjectMeta `json:"metadata,omitempty"`
 
 	// Spec defines the behavior of the Network.
-	Spec NetworkSpec `json:"spec,omitempty" description:"network spec, including subnets and provider network id"`
+	Spec NetworkSpec `json:"spec,omitempty"`
 
 	// Status describes the current status of a Network
-	Status NetworkStatus `json:"status,omitempty" description:"status describes the current status of a Network"`
+	Status NetworkStatus `json:"status,omitempty"`
 }
 
 // NetworkList is a list of Networks
 type NetworkList struct {
 	TypeMeta `json:",inline"`
-	ListMeta `json:"metadata,omitempty" description:"standard list metadata; see http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#metadata"`
+	// Standard list metadata.
+	// More info: http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#types-kinds
+	ListMeta `json:"metadata,omitempty"`
 
-	Items []Network `json:"items"  description:"items is the list of Network objects in the list"`
+	// Items is the list of Network objects in the list
+	Items []Network `json:"items"`
 }
 
 // Binding ties one object to another.
@@ -2548,6 +2607,20 @@ type ComponentStatusList struct {
 
 	// List of ComponentStatus objects.
 	Items []ComponentStatus `json:"items"`
+}
+
+// DownwardAPIVolumeSource represents a volume containing downward API info
+type DownwardAPIVolumeSource struct {
+	// Items is a list of downward API volume file
+	Items []DownwardAPIVolumeFile `json:"items,omitempty"`
+}
+
+// DownwardAPIVolumeFile represents information to create the file containing the pod field
+type DownwardAPIVolumeFile struct {
+	// Required: Path is  the relative path name of the file to be created. Must not be absolute or contain the '..' path. Must be utf-8 encoded. The first item of the relative path must not start with '..'
+	Path string `json:"path"`
+	// Required: Selects a field of the pod: only annotations, labels, name and namespace are supported.
+	FieldRef ObjectFieldSelector `json:"fieldRef"`
 }
 
 // SecurityContext holds security configuration that will be applied to a container.

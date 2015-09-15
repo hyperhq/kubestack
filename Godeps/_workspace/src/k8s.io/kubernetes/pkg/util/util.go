@@ -44,12 +44,16 @@ var ReallyCrash bool
 var PanicHandlers = []func(interface{}){logPanic}
 
 // HandleCrash simply catches a crash and logs an error. Meant to be called via defer.
-func HandleCrash() {
+// Additional context-specific handlers can be provided, and will be called in case of panic
+func HandleCrash(additionalHandlers ...func(interface{})) {
 	if ReallyCrash {
 		return
 	}
 	if r := recover(); r != nil {
 		for _, fn := range PanicHandlers {
+			fn(r)
+		}
+		for _, fn := range additionalHandlers {
 			fn(r)
 		}
 	}
@@ -89,6 +93,11 @@ func logError(err error) {
 
 // NeverStop may be passed to Until to make it never stop.
 var NeverStop <-chan struct{} = make(chan struct{})
+
+// Forever is syntactic sugar on top of Until
+func Forever(f func(), period time.Duration) {
+	Until(f, period, NeverStop)
+}
 
 // Until loops until stop channel is closed, running f every period.
 // Catches any panics, and keeps going. f may not be invoked if
@@ -168,6 +177,9 @@ func (intstr IntOrString) MarshalJSON() ([]byte, error) {
 }
 
 func (intstr *IntOrString) Fuzz(c fuzz.Continue) {
+	if intstr == nil {
+		return
+	}
 	if c.RandBool() {
 		intstr.Kind = IntstrInt
 		c.Fuzz(&intstr.IntVal)

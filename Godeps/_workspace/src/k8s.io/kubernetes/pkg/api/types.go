@@ -224,6 +224,14 @@ type VolumeSource struct {
 	PersistentVolumeClaim *PersistentVolumeClaimVolumeSource `json:"persistentVolumeClaim,omitempty"`
 	// RBD represents a Rados Block Device mount on the host that shares a pod's lifetime
 	RBD *RBDVolumeSource `json:"rbd,omitempty"`
+	// Cinder represents a cinder volume attached and mounted on kubelets host machine
+	Cinder *CinderVolumeSource `json:"cinder,omitempty"`
+
+	// CephFS represents a Cephfs mount on the host that shares a pod's lifetime
+	CephFS *CephFSVolumeSource `json:"cephfs,omitempty"`
+
+	// DownwardAPI represents metadata about the pod that should populate this volume
+	DownwardAPI *DownwardAPIVolumeSource `json:"downwardAPI,omitempty"`
 }
 
 // Similar to VolumeSource but meant for the administrator who creates PVs.
@@ -248,6 +256,10 @@ type PersistentVolumeSource struct {
 	// ISCSIVolumeSource represents an ISCSI resource that is attached to a
 	// kubelet's host machine and then exposed to the pod.
 	ISCSI *ISCSIVolumeSource `json:"iscsi,omitempty"`
+	// Cinder represents a cinder volume attached and mounted on kubelets host machine
+	Cinder *CinderVolumeSource `json:"cinder,omitempty"`
+	// CephFS represents a Ceph FS mount on the host that shares a pod's lifetime
+	CephFS *CephFSVolumeSource `json:"cephfs,omitempty"`
 }
 
 type PersistentVolumeClaimVolumeSource struct {
@@ -314,7 +326,7 @@ type PersistentVolumeStatus struct {
 type PersistentVolumeList struct {
 	TypeMeta `json:",inline"`
 	ListMeta `json:"metadata,omitempty"`
-	Items    []PersistentVolume `json:"items,omitempty"`
+	Items    []PersistentVolume `json:"items"`
 }
 
 // PersistentVolumeClaim is a user's request for and claim to a persistent volume
@@ -332,7 +344,7 @@ type PersistentVolumeClaim struct {
 type PersistentVolumeClaimList struct {
 	TypeMeta `json:",inline"`
 	ListMeta `json:"metadata,omitempty"`
-	Items    []PersistentVolumeClaim `json:"items,omitempty"`
+	Items    []PersistentVolumeClaim `json:"items"`
 }
 
 // PersistentVolumeClaimSpec describes the common attributes of storage devices
@@ -556,6 +568,50 @@ type RBDVolumeSource struct {
 	// Optional: Defaults to false (read/write). ReadOnly here will force
 	// the ReadOnly setting in VolumeMounts.
 	ReadOnly bool `json:"readOnly,omitempty"`
+}
+
+// CinderVolumeSource represents a cinder volume resource in Openstack.
+// A Cinder volume must exist and be formatted before mounting to a container.
+// The volume must also be in the same region as the kubelet.
+type CinderVolumeSource struct {
+	// Unique id of the volume used to identify the cinder volume
+	VolumeID string `json:"volumeID"`
+	// Required: Filesystem type to mount.
+	// Must be a filesystem type supported by the host operating system.
+	// Only ext3 and ext4 are allowed
+	FSType string `json:"fsType,omitempty"`
+	// Optional: Defaults to false (read/write). ReadOnly here will force
+	// the ReadOnly setting in VolumeMounts.
+	ReadOnly bool `json:"readOnly,omitempty"`
+}
+
+// CephFSVolumeSource represents a Ceph Filesystem Mount that lasts the lifetime of a pod
+type CephFSVolumeSource struct {
+	// Required: Monitors is a collection of Ceph monitors
+	Monitors []string `json:"monitors"`
+	// Optional: User is the rados user name, default is admin
+	User string `json:"user,omitempty"`
+	// Optional: SecretFile is the path to key ring for User, default is /etc/ceph/user.secret
+	SecretFile string `json:"secretFile,omitempty"`
+	// Optional: SecretRef is reference to the authentication secret for User, default is empty.
+	SecretRef *LocalObjectReference `json:"secretRef,omitempty"`
+	// Optional: Defaults to false (read/write). ReadOnly here will force
+	// the ReadOnly setting in VolumeMounts.
+	ReadOnly bool `json:"readOnly,omitempty"`
+}
+
+// DownwardAPIVolumeSource represents a volume containing downward API info
+type DownwardAPIVolumeSource struct {
+	// Items is a list of DownwardAPIVolume file
+	Items []DownwardAPIVolumeFile `json:"items,omitempty"`
+}
+
+// DownwardAPIVolumeFile represents a single file containing information from the downward API
+type DownwardAPIVolumeFile struct {
+	// Required: Path is  the relative path name of the file to be created. Must not be absolute or contain the '..' path. Must be utf-8 encoded. The first item of the relative path must not start with '..'
+	Path string `json:"path"`
+	// Required: Selects a field of the pod: only annotations, labels, name and  namespace are supported.
+	FieldRef ObjectFieldSelector `json:"fieldRef"`
 }
 
 // ContainerPort represents a network port in a single container
@@ -1095,13 +1151,13 @@ const (
 	// every node, in addition to 'ClusterIP' type.
 	ServiceTypeNodePort ServiceType = "NodePort"
 
-	// ServiceTypeLoadBalancer means a service will be exposed via an
-	// external load balancer (if the cloud provider supports it), in addition
-	// to 'NodePort' type.
+  // ServiceTypeLoadBalancer means a service will be exposed via an
+  // external load balancer (if the cloud provider supports it), in addition
+  // to 'NodePort' type.
 	ServiceTypeLoadBalancer ServiceType = "LoadBalancer"
 
-	// ServiceTypeNetworkProvider means a service and its clusterIP will be created
-	// by networkprovider,
+  // ServiceTypeNetworkProvider means a service's external load-balancer will be
+  // created by networkprovider.
 	ServiceTypeNetworkProvider ServiceType = "NetworkProvider"
 )
 
@@ -1510,7 +1566,9 @@ const (
 
 // Subnet is a description of a subnet
 type Subnet struct {
-	CIDR    string `json:"cidr"`
+	// CIDR of this subnet
+	CIDR string `json:"cidr"`
+	// Gateway of this subnet
 	Gateway string `json:"gateway"`
 }
 
@@ -1530,7 +1588,9 @@ type NetworkSpec struct {
 
 // Network describes a network
 type Network struct {
-	TypeMeta   `json:",inline"`
+	TypeMeta `json:",inline"`
+	// Standard object's metadata.
+	// More info: http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#metadata
 	ObjectMeta `json:"metadata,omitempty"`
 
 	// Spec defines the behavior of the Network.
@@ -1543,8 +1603,11 @@ type Network struct {
 // NetworkList is a list of Networks
 type NetworkList struct {
 	TypeMeta `json:",inline"`
+	// Standard list metadata.
+	// More info: http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#types-kinds
 	ListMeta `json:"metadata,omitempty"`
 
+	// Items is the list of Network objects in the list
 	Items []Network `json:"items"`
 }
 
