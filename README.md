@@ -26,6 +26,7 @@ username = admin
 password = admin
 tenant-name = admin
 region = RegionOne
+ext-net-id = <Your-external-network-id>
 
 [LoadBalancer]
 create-monitor = yes
