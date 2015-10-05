@@ -927,7 +927,7 @@ func (os *OpenStack) CreateLoadBalancer(loadBalancer *networkprovider.LoadBalanc
 		return "", fmt.Errorf("unsupported load balancer affinity: %v", affinity)
 	}
 
-	glog.V(2).Info("Checking if openstack load balancer already exists: %s", loadBalancer.Name)
+	glog.V(2).Info("Checking if openstack load balancer already exists: ", loadBalancer.Name)
 	_, err := os.getPoolByName(loadBalancer.Name)
 	if err != nil && err != networkprovider.ErrNotFound {
 		return "", fmt.Errorf("error checking if openstack load balancer already exists: %v", err)
@@ -1152,8 +1152,6 @@ func (os *OpenStack) DeleteLoadBalancer(name string) error {
 			return err
 		}
 	}
-
-	return nil
 
 	return nil
 }
