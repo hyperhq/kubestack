@@ -25,9 +25,9 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
+	"github.com/hyperhq/kubestack/pkg/exec"
+	"github.com/hyperhq/kubestack/pkg/plugins"
 	"github.com/rackspace/gophercloud/openstack/networking/v2/ports"
-	"kubestack/pkg/exec"
-	"kubestack/pkg/plugins"
 )
 
 const (

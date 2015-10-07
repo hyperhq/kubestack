@@ -21,9 +21,9 @@ import (
 	"net/http"
 
 	"github.com/golang/glog"
+	"github.com/hyperhq/kubestack/pkg/common"
 	"k8s.io/kubernetes/pkg/networkprovider"
 	"k8s.io/kubernetes/pkg/networkprovider/providers/remote"
-	"kubestack/pkg/common"
 )
 
 // KubeHandler forwards requests and responses between the docker daemon and the plugin.

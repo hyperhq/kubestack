@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"os"
 
-	"kubestack/pkg/common"
-	"kubestack/pkg/kubestack"
+	"github.com/hyperhq/kubestack/pkg/common"
+	"github.com/hyperhq/kubestack/pkg/kubestack"
 )
 
 const (
