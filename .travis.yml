@@ -9,4 +9,5 @@ install:
 
 script: 
   - cd ${TRAVIS_BUILD_DIR}
+  - ./verify-gofmt.sh
   - make
