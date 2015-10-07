@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"code.google.com/p/gcfg"
+	"github.com/hyperhq/kubestack/pkg/plugins"
 	"github.com/rackspace/gophercloud"
 	"github.com/rackspace/gophercloud/openstack"
 	"github.com/rackspace/gophercloud/openstack/identity/v2/tenants"
@@ -42,12 +43,11 @@ import (
 	"github.com/rackspace/gophercloud/openstack/networking/v2/ports"
 	"github.com/rackspace/gophercloud/openstack/networking/v2/subnets"
 	"github.com/rackspace/gophercloud/pagination"
-	"kubestack/pkg/plugins"
 
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/networkprovider"
 
-	_ "kubestack/pkg/plugins/openvswitch"
+	_ "github.com/hyperhq/kubestack/pkg/plugins/openvswitch"
 	"net"
 )
 

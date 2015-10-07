@@ -1,3 +1,5 @@
+[![Build
+Status](https://travis-ci.org/hyperhq/kubestack.svg)](https://travis-ci.org/hyperhq/kubestack)
 # OpenStack Network Provider for Kubernetes
  
 KubeStack is an OpenStack network provider for kubernetes. KubeStack is devided into two functions:
