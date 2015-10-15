@@ -223,6 +223,7 @@ func (h *KubeHandler) GetNetwork(req *remote.GetNetworkRequest) common.Response 
 	if err != nil {
 		resp.Err = err.Error()
 	} else {
+		result.TenantID = h.driver.ToTenantName(result.TenantID)
 		resp.Result = result
 	}
 
@@ -234,6 +235,7 @@ func (h *KubeHandler) CreateNetwork(req *remote.CreateNetworkRequest) common.Res
 	glog.V(4).Infof("CreateNetwork with request %v", req)
 
 	var resp common.Response
+	req.Network.TenantID = h.driver.ToTenantID(req.Network.TenantID)
 	err := h.driver.CreateNetwork(req.Network)
 	if err != nil {
 		resp.Err = err.Error()
@@ -247,6 +249,7 @@ func (h *KubeHandler) UpdateNetwork(req *remote.UpdateNetworkRequest) common.Res
 	glog.V(4).Infof("UpdateNetwork with request %v", req)
 
 	var resp common.Response
+	req.Network.TenantID = h.driver.ToTenantID(req.Network.TenantID)
 	err := h.driver.UpdateNetwork(req.Network)
 	if err != nil {
 		resp.Err = err.Error()
@@ -275,6 +278,7 @@ func (h *KubeHandler) GetLoadBalancer(req *remote.GetLoadBalancerRequest) common
 	if err != nil {
 		resp.Err = err.Error()
 	} else {
+		lb.TenantID = h.driver.ToTenantName(lb.TenantID)
 		resp.Result = lb
 	}
 
@@ -285,6 +289,7 @@ func (h *KubeHandler) CreateLoadBalancer(req *remote.CreateLoadBalancerRequest) 
 	glog.V(4).Infof("CreateLoadBalancer with request %v", req)
 
 	var resp common.Response
+	req.LoadBalancer.TenantID = h.driver.ToTenantID(req.LoadBalancer.TenantID)
 	vip, err := h.driver.CreateLoadBalancer(req.LoadBalancer, string(req.Affinity))
 	if err != nil {
 		resp.Err = err.Error()

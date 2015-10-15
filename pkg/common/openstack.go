@@ -1156,6 +1156,54 @@ func (os *OpenStack) DeleteLoadBalancer(name string) error {
 	return nil
 }
 
+// Convert tenantID to tenantName
+func (os *OpenStack) ToTenantName(tenant string) string {
+	opts := tenants.ListOpts{}
+	pager := tenants.List(os.identity, &opts)
+	result := tenant
+
+	pager.EachPage(func(page pagination.Page) (bool, error) {
+		tenantList, err := tenants.ExtractTenants(page)
+		if err != nil {
+			return false, err
+		}
+
+		for _, t := range tenantList {
+			if t.ID == tenant {
+				result = t.Name
+			}
+		}
+
+		return true, nil
+	})
+
+	return result
+}
+
+// Convert tenantName to tenantID
+func (os *OpenStack) ToTenantID(tenant string) string {
+	opts := tenants.ListOpts{}
+	pager := tenants.List(os.identity, &opts)
+	result := tenant
+
+	pager.EachPage(func(page pagination.Page) (bool, error) {
+		tenantList, err := tenants.ExtractTenants(page)
+		if err != nil {
+			return false, err
+		}
+
+		for _, t := range tenantList {
+			if t.Name == tenant {
+				result = t.ID
+			}
+		}
+
+		return true, nil
+	})
+
+	return result
+}
+
 // Check the tenant id exist
 func (os *OpenStack) CheckTenantID(tenantID string) (bool, error) {
 	opts := tenants.ListOpts{}
