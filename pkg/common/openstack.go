@@ -47,6 +47,7 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/networkprovider"
 
+	// import plugins
 	_ "github.com/hyperhq/kubestack/pkg/plugins/openvswitch"
 	"net"
 )
@@ -55,6 +56,7 @@ const (
 	podNamePrefix     = "kube"
 	securitygroupName = "kube-securitygroup-default"
 
+	// Service affinities
 	ServiceAffinityNone     = "None"
 	ServiceAffinityClientIP = "ClientIP"
 )
@@ -1112,7 +1114,16 @@ func (os *OpenStack) DeleteLoadBalancer(name string) error {
 	// We have to delete the VIP before the pool can be deleted,
 	// so no point continuing if this fails.
 	if vip != nil {
-		err := vips.Delete(os.network, vip.ID).ExtractErr()
+		fip, err := os.getFloatingIPByPort(vip.PortID)
+		if err == nil && fip != nil {
+			err = floatingips.Delete(os.network, fip.ID).ExtractErr()
+			if err != nil && !isNotFound(err) {
+				glog.Errorf("delete floatingip failed: %v", err)
+				return err
+			}
+		}
+
+		err = vips.Delete(os.network, vip.ID).ExtractErr()
 		if err != nil && !isNotFound(err) {
 			return err
 		}
