@@ -434,22 +434,49 @@ func (os *OpenStack) DeleteNetwork(networkName string) error {
 	}
 
 	if osNetwork != nil {
-		router, e := os.getRouterByName(networkName)
-		if e != nil {
-			glog.Errorf("Get openstack router %s error: %v", networkName, e)
+		// Delete ports
+		opts := ports.ListOpts{NetworkID: osNetwork.ID}
+		pager := ports.List(os.network, opts)
+		err := pager.EachPage(func(page pagination.Page) (bool, error) {
+			portList, err := ports.ExtractPorts(page)
+			if err != nil {
+				glog.Errorf("Get openstack ports error: %v", err)
+				return false, err
+			}
+
+			for _, port := range portList {
+				if port.DeviceOwner == "network:router_interface" {
+					continue
+				}
+
+				err = ports.Delete(os.network, port.ID).ExtractErr()
+				if err != nil {
+					glog.Warningf("Delete port %v failed: %v", port.ID, err)
+				}
+			}
+
+			return true, nil
+		})
+		if err != nil {
+			glog.Errorf("Delete ports error: %v", err)
+		}
+
+		router, err := os.getRouterByName(networkName)
+		if err != nil {
+			glog.Errorf("Get openstack router %s error: %v", networkName, err)
 			return err
 		}
 
 		// delete all subnets
 		for _, subnet := range osNetwork.Subnets {
 			opts := routers.InterfaceOpts{SubnetID: subnet}
-			_, e := routers.RemoveInterface(os.network, router.ID, opts).Extract()
-			if e != nil {
-				glog.Errorf("Get openstack router %s error: %v", networkName, e)
+			_, err := routers.RemoveInterface(os.network, router.ID, opts).Extract()
+			if err != nil {
+				glog.Errorf("Get openstack router %s error: %v", networkName, err)
 				return err
 			}
 
-			err := subnets.Delete(os.network, subnet).ExtractErr()
+			err = subnets.Delete(os.network, subnet).ExtractErr()
 			if err != nil {
 				glog.Errorf("Delete openstack subnet %s error: %v", subnet, err)
 				return err
@@ -457,7 +484,7 @@ func (os *OpenStack) DeleteNetwork(networkName string) error {
 		}
 
 		// delete router
-		err := routers.Delete(os.network, router.ID).ExtractErr()
+		err = routers.Delete(os.network, router.ID).ExtractErr()
 		if err != nil {
 			glog.Errorf("Delete openstack router %s error: %v", router.ID, err)
 			return err
