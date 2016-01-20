@@ -643,16 +643,54 @@ func (os *OpenStack) CreatePort(networkID, tenantID, portName string) (*ports.Po
 
 // Bind an port to external network, return error
 func (os *OpenStack) BindPortToFloatingip(portID, floatingIPAddress, tenantID string) error {
-	opts := floatingips.CreateOpts{
-		FloatingNetworkID: os.ExtNetID,
-		TenantID:          tenantID,
-		FloatingIP:        floatingIPAddress,
-		PortID:            portID,
+	var fip *floatingips.FloatingIP
+	opts := floatingips.ListOpts{
+		FloatingIP: floatingIPAddress,
 	}
-	_, err := floatingips.Create(os.network, opts).Extract()
+	pager := floatingips.List(os.network, opts)
+	err := pager.EachPage(func(page pagination.Page) (bool, error) {
+		floatingipList, err := floatingips.ExtractFloatingIPs(page)
+		if err != nil {
+			glog.Errorf("Get openstack floatingips error: %v", err)
+			return false, err
+		}
+
+		if len(floatingipList) > 0 {
+			fip = &floatingipList[0]
+		}
+
+		return true, nil
+	})
 	if err != nil {
-		glog.Errorf("Create openstack flaotingip failed: %v", err)
 		return err
+	}
+
+	if fip != nil {
+		// fip has already been used
+		if fip.PortID != "" {
+			return fmt.Errorf("FloatingIP %v is already been binded to %v", floatingIPAddress, fip.PortID)
+		}
+
+		// Update floatingip
+		floatOpts := floatingips.UpdateOpts{PortID: portID}
+		_, err = floatingips.Update(os.network, fip.ID, floatOpts).Extract()
+		if err != nil {
+			glog.Errorf("Bind floatingip %v to %v failed: %v", floatingIPAddress, portID, err)
+			return err
+		}
+	} else {
+		// Create floatingip
+		opts := floatingips.CreateOpts{
+			FloatingNetworkID: os.ExtNetID,
+			TenantID:          tenantID,
+			FloatingIP:        floatingIPAddress,
+			PortID:            portID,
+		}
+		_, err := floatingips.Create(os.network, opts).Extract()
+		if err != nil {
+			glog.Errorf("Create openstack flaotingip failed: %v", err)
+			return err
+		}
 	}
 
 	return nil
@@ -1141,15 +1179,6 @@ func (os *OpenStack) DeleteLoadBalancer(name string) error {
 	// We have to delete the VIP before the pool can be deleted,
 	// so no point continuing if this fails.
 	if vip != nil {
-		fip, err := os.getFloatingIPByPort(vip.PortID)
-		if err == nil && fip != nil {
-			err = floatingips.Delete(os.network, fip.ID).ExtractErr()
-			if err != nil && !isNotFound(err) {
-				glog.Errorf("delete floatingip failed: %v", err)
-				return err
-			}
-		}
-
 		err = vips.Delete(os.network, vip.ID).ExtractErr()
 		if err != nil && !isNotFound(err) {
 			return err
