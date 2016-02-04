@@ -204,7 +204,7 @@ func (p *OVSPlugin) saveHyperPodSpec(spec, podFullName string) error {
 	return nil
 }
 
-func (p *OVSPlugin) SetupHyperInterface(podName, podInfraContainerID string, port *ports.Port, ipcidr, gateway string) error {
+func (p *OVSPlugin) SetupHyperInterface(podName, podInfraContainerID string, port *ports.Port, ipcidr, gateway string, dnsServers []string) error {
 	// Generate interfaces configure
 	bridge := p.buildBridgeName(port.ID)
 	tapName, _ := p.buildTapName(port.ID)
@@ -233,6 +233,18 @@ func (p *OVSPlugin) SetupHyperInterface(podName, podInfraContainerID string, por
 		return err
 	}
 	specData["interfaces"] = []map[string]string{interfaceSpec}
+
+	// Setup dns servers
+	if dns, ok := specData["dns"]; ok {
+		if hosts, ok := dns.([]interface{}); ok {
+			for _, host := range dnsServers {
+				hosts = append(hosts, host)
+			}
+			specData["dns"] = hosts
+		}
+	} else {
+		specData["dns"] = dnsServers
+	}
 
 	// save spec back
 	newPodSpec, err := json.Marshal(specData)
@@ -311,7 +323,7 @@ func (p *OVSPlugin) SetupOVSInterface(podName, podInfraContainerID string, port 
 	return nil
 }
 
-func (p *OVSPlugin) SetupInterface(podName, podInfraContainerID string, port *ports.Port, ipcidr, gateway string, containerRuntime string) error {
+func (p *OVSPlugin) SetupInterface(podName, podInfraContainerID string, port *ports.Port, ipcidr, gateway string, dnsServers []string, containerRuntime string) error {
 	err := p.SetupOVSInterface(podName, podInfraContainerID, port, ipcidr, gateway, containerRuntime)
 	if err != nil {
 		return err
@@ -324,7 +336,7 @@ func (p *OVSPlugin) SetupInterface(podName, podInfraContainerID string, port *po
 			return err
 		}
 	case runtimeTypeHyper:
-		err := p.SetupHyperInterface(podName, podInfraContainerID, port, ipcidr, gateway)
+		err := p.SetupHyperInterface(podName, podInfraContainerID, port, ipcidr, gateway, dnsServers)
 		if err != nil {
 			return err
 		}

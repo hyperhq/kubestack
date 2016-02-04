@@ -78,6 +78,8 @@ type Port struct {
 	SecurityGroups []string `mapstructure:"security_groups" json:"security_groups"`
 	// Identifies the device (e.g., virtual server) using this port.
 	DeviceID string `mapstructure:"device_id" json:"device_id"`
+	// Dns name for the port
+	DNSName string `mapstructure:"dns_name" json:"dns_name"`
 }
 
 // PortPage is the page returned by a pager when traversing over a collection
