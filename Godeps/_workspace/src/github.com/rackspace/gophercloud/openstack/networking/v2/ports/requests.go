@@ -102,6 +102,7 @@ type CreateOpts struct {
 	FixedIPs       interface{}
 	DeviceID       string
 	DeviceOwner    string
+	DNSName        string
 	TenantID       string
 	HostID         string
 	SecurityGroups []string
@@ -122,6 +123,10 @@ func (opts CreateOpts) ToPortCreateMap() (map[string]interface{}, error) {
 	if opts.DeviceOwner != "" {
 		p["device_owner"] = opts.DeviceOwner
 	}
+	if opts.DNSName != "" {
+		p["dns_name"] = opts.DNSName
+	}
+
 	if opts.FixedIPs != nil {
 		p["fixed_ips"] = opts.FixedIPs
 	}
@@ -177,6 +182,7 @@ type UpdateOpts struct {
 	FixedIPs       interface{}
 	DeviceID       string
 	DeviceOwner    string
+	DNSName        string
 	HostID         string
 	SecurityGroups []string
 }
@@ -190,6 +196,9 @@ func (opts UpdateOpts) ToPortUpdateMap() (map[string]interface{}, error) {
 	}
 	if opts.DeviceOwner != "" {
 		p["device_owner"] = opts.DeviceOwner
+	}
+	if opts.DNSName != "" {
+		p["dns_name"] = opts.DNSName
 	}
 	if opts.FixedIPs != nil {
 		p["fixed_ips"] = opts.FixedIPs

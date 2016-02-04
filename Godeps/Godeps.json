@@ -103,7 +103,7 @@
 		{
 			"ImportPath": "github.com/rackspace/gophercloud",
 			"Comment": "v1.0.0-655-gbfefffc",
-			"Rev": "bfefffca295a31f888c340370be2306ba0c8c472"
+			"Rev": "6b680ccdf187a3ddfffe13d7bcc37e771d6f3b4e"
 		},
 		{
 			"ImportPath": "github.com/spf13/pflag",
