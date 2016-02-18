@@ -1,7 +1,7 @@
 [![Build
 Status](https://travis-ci.org/hyperhq/kubestack.svg)](https://travis-ci.org/hyperhq/kubestack)
 # OpenStack Network Provider for Kubernetes
- 
+
 KubeStack is an OpenStack network provider for kubernetes. KubeStack is devided into two functions:
 
 * kubestack running on the same host with kube-controller-manager, which provides network management by openstack
@@ -13,7 +13,8 @@ Notes: You need a working OpenStack and Kubernetes before deploying kubestack.
 
 
 ```
-cd $GOPATH
+mkdir -p $GOPATH/src/github.com/hyperhq/
+cd $GOPATH/src/github.com/hyperhq/
 git clone https://github.com/hyperhq/kubestack.git
 cd kubestack
 make && make install
