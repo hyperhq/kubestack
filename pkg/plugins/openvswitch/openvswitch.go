@@ -237,10 +237,10 @@ func (p *OVSPlugin) SetupHyperInterface(podName, podInfraContainerID string, por
 	// Setup dns servers
 	if dns, ok := specData["dns"]; ok {
 		if hosts, ok := dns.([]interface{}); ok {
-			for _, host := range dnsServers {
-				hosts = append(hosts, host)
+			for _, host := range hosts {
+				dnsServers = append(dnsServers, host.(string))
 			}
-			specData["dns"] = hosts
+			specData["dns"] = dnsServers
 		}
 	} else {
 		specData["dns"] = dnsServers

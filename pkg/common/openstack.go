@@ -629,7 +629,7 @@ func (os *OpenStack) CreatePort(networkID, tenantID, portName, podHostname strin
 		TenantID:       tenantID,
 		HostID:         getHostName(),
 		DeviceID:       uuid.Generate().String(),
-		DeviceOwner:    fmt.Sprintf("container:%s", getHostName()),
+		DeviceOwner:    fmt.Sprintf("compute:%s", getHostName()),
 		DNSName:        podHostname,
 		SecurityGroups: []string{securitygroup},
 	}
