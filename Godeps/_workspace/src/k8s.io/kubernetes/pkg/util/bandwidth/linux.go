@@ -1,3 +1,5 @@
+// +build linux
+
 /*
 Copyright 2015 The Kubernetes Authors All rights reserved.
 
@@ -25,8 +27,8 @@ import (
 	"strings"
 
 	"k8s.io/kubernetes/pkg/api/resource"
-	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/exec"
+	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
 )
@@ -65,7 +67,7 @@ func (t *tcShaper) nextClassID() (int, error) {
 	}
 
 	scanner := bufio.NewScanner(bytes.NewBuffer(data))
-	classes := util.StringSet{}
+	classes := sets.String{}
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		// skip empty lines
@@ -220,6 +222,12 @@ func (t *tcShaper) interfaceExists() (bool, string, error) {
 	}
 	value := strings.TrimSpace(string(data))
 	if len(value) == 0 {
+		return false, "", nil
+	}
+	// Newer versions of tc and/or the kernel return the following instead of nothing:
+	// qdisc noqueue 0: root refcnt 2
+	fields := strings.Fields(value)
+	if len(fields) > 1 && fields[1] == "noqueue" {
 		return false, "", nil
 	}
 	return true, value, nil

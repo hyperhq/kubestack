@@ -22,147 +22,121 @@ import (
 	"os"
 	"strings"
 
+	"k8s.io/kubernetes/pkg/api"
+	_ "k8s.io/kubernetes/pkg/api/install"
+	_ "k8s.io/kubernetes/pkg/apis/extensions/install"
+	_ "k8s.io/kubernetes/pkg/apis/metrics/install"
+
 	"k8s.io/kubernetes/pkg/api/latest"
 	"k8s.io/kubernetes/pkg/api/meta"
-	apiutil "k8s.io/kubernetes/pkg/api/util"
-	explatest "k8s.io/kubernetes/pkg/expapi/latest"
+	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
 var (
-	Groups       = make(map[string]TestGroup)
-	Default      TestGroup
-	Experimental TestGroup
+	Groups     = make(map[string]TestGroup)
+	Default    TestGroup
+	Extensions TestGroup
 )
 
 type TestGroup struct {
-	// Name of the group
-	Group string
-	// Version of the group Group under test
-	VersionUnderTest string
-	// Group and Version. In most cases equals to Group + "/" + VersionUnverTest
-	GroupVersionUnderTest string
+	externalGroupVersion unversioned.GroupVersion
+	internalGroupVersion unversioned.GroupVersion
 }
 
 func init() {
 	kubeTestAPI := os.Getenv("KUBE_TEST_API")
 	if kubeTestAPI != "" {
 		testGroupVersions := strings.Split(kubeTestAPI, ",")
-		for _, groupVersion := range testGroupVersions {
-			// TODO: caesarxuchao: the apiutil package is hacky, it will be replaced
-			// by a following PR.
-			Groups[apiutil.GetGroup(groupVersion)] =
-				TestGroup{apiutil.GetGroup(groupVersion), apiutil.GetVersion(groupVersion), groupVersion}
+		for _, gvString := range testGroupVersions {
+			groupVersion, err := unversioned.ParseGroupVersion(gvString)
+			if err != nil {
+				panic(fmt.Sprintf("Error parsing groupversion %v: %v", gvString, err))
+			}
+
+			Groups[groupVersion.Group] = TestGroup{
+				externalGroupVersion: groupVersion,
+				internalGroupVersion: unversioned.GroupVersion{Group: groupVersion.Group},
+			}
 		}
 	}
 
-	// TODO: caesarxuchao: we need a central place to store all available API
-	// groups and their metadata.
-	if _, ok := Groups[""]; !ok {
-		// TODO: The second latest.Version will be latest.GroupVersion after we
-		// have multiple group support
-		Groups[""] = TestGroup{"", latest.Version, latest.Version}
+	if _, ok := Groups[api.GroupName]; !ok {
+		Groups[api.GroupName] = TestGroup{
+			externalGroupVersion: unversioned.GroupVersion{Group: api.GroupName, Version: latest.GroupOrDie(api.GroupName).GroupVersion.Version},
+			internalGroupVersion: api.SchemeGroupVersion,
+		}
 	}
-	if _, ok := Groups["experimental"]; !ok {
-		Groups["experimental"] = TestGroup{"experimental", explatest.Version, explatest.Version}
+	if _, ok := Groups[extensions.GroupName]; !ok {
+		Groups[extensions.GroupName] = TestGroup{
+			externalGroupVersion: unversioned.GroupVersion{Group: extensions.GroupName, Version: latest.GroupOrDie(extensions.GroupName).GroupVersion.Version},
+			internalGroupVersion: extensions.SchemeGroupVersion,
+		}
 	}
 
-	Default = Groups[""]
-	Experimental = Groups["experimental"]
+	Default = Groups[api.GroupName]
+	Extensions = Groups[extensions.GroupName]
 }
 
-// Version returns the API version to test against, as set by the KUBE_TEST_API env var.
-func (g TestGroup) Version() string {
-	return g.VersionUnderTest
+func (g TestGroup) GroupVersion() *unversioned.GroupVersion {
+	copyOfGroupVersion := g.externalGroupVersion
+	return &copyOfGroupVersion
 }
 
-// GroupAndVersion returns the API version to test against for a group, as set
-// by the KUBE_TEST_API env var.
-// Return value is in the form of "group/version".
-func (g TestGroup) GroupAndVersion() string {
-	return g.GroupVersionUnderTest
+// InternalGroupVersion returns the group,version used to identify the internal
+// types for this API
+func (g TestGroup) InternalGroupVersion() unversioned.GroupVersion {
+	return g.internalGroupVersion
 }
 
 // Codec returns the codec for the API version to test against, as set by the
 // KUBE_TEST_API env var.
 func (g TestGroup) Codec() runtime.Codec {
 	// TODO: caesarxuchao: Restructure the body once we have a central `latest`.
-	if g.Group == "" {
-		interfaces, err := latest.InterfacesFor(g.VersionUnderTest)
-		if err != nil {
-			panic(err)
-		}
-		return interfaces.Codec
+	interfaces, err := latest.GroupOrDie(g.externalGroupVersion.Group).InterfacesFor(g.externalGroupVersion)
+	if err != nil {
+		panic(err)
 	}
-	if g.Group == "experimental" {
-		interfaces, err := explatest.InterfacesFor(g.VersionUnderTest)
-		if err != nil {
-			panic(err)
-		}
-		return interfaces.Codec
-	}
-	panic(fmt.Errorf("cannot test group %s", g.Group))
+	return interfaces.Codec
 }
 
 // Converter returns the api.Scheme for the API version to test against, as set by the
 // KUBE_TEST_API env var.
 func (g TestGroup) Converter() runtime.ObjectConvertor {
-	// TODO: caesarxuchao: Restructure the body once we have a central `latest`.
-	if g.Group == "" {
-		interfaces, err := latest.InterfacesFor(g.VersionUnderTest)
-		if err != nil {
-			panic(err)
-		}
-		return interfaces.ObjectConvertor
+	interfaces, err := latest.GroupOrDie(g.externalGroupVersion.Group).InterfacesFor(g.externalGroupVersion)
+	if err != nil {
+		panic(err)
 	}
-	if g.Group == "experimental" {
-		interfaces, err := explatest.InterfacesFor(g.VersionUnderTest)
-		if err != nil {
-			panic(err)
-		}
-		return interfaces.ObjectConvertor
-	}
-	panic(fmt.Errorf("cannot test group %s", g.Group))
-
+	return interfaces.ObjectConvertor
 }
 
 // MetadataAccessor returns the MetadataAccessor for the API version to test against,
 // as set by the KUBE_TEST_API env var.
 func (g TestGroup) MetadataAccessor() meta.MetadataAccessor {
-	// TODO: caesarxuchao: Restructure the body once we have a central `latest`.
-	if g.Group == "" {
-		interfaces, err := latest.InterfacesFor(g.VersionUnderTest)
-		if err != nil {
-			panic(err)
-		}
-		return interfaces.MetadataAccessor
+	interfaces, err := latest.GroupOrDie(g.externalGroupVersion.Group).InterfacesFor(g.externalGroupVersion)
+	if err != nil {
+		panic(err)
 	}
-	if g.Group == "experimental" {
-		interfaces, err := explatest.InterfacesFor(g.VersionUnderTest)
-		if err != nil {
-			panic(err)
-		}
-		return interfaces.MetadataAccessor
-	}
-	panic(fmt.Errorf("cannot test group %s", g.Group))
+	return interfaces.MetadataAccessor
 }
 
 // SelfLink returns a self link that will appear to be for the version Version().
 // 'resource' should be the resource path, e.g. "pods" for the Pod type. 'name' should be
 // empty for lists.
 func (g TestGroup) SelfLink(resource, name string) string {
-	if g.Group == "" {
+	if g.externalGroupVersion.Group == api.GroupName {
 		if name == "" {
-			return fmt.Sprintf("/api/%s/%s", g.Version(), resource)
+			return fmt.Sprintf("/api/%s/%s", g.externalGroupVersion.Version, resource)
 		}
-		return fmt.Sprintf("/api/%s/%s/%s", g.Version(), resource, name)
+		return fmt.Sprintf("/api/%s/%s/%s", g.externalGroupVersion.Version, resource, name)
 	} else {
 		// TODO: will need a /apis prefix once we have proper multi-group
 		// support
 		if name == "" {
-			return fmt.Sprintf("/%s/%s/%s", g.Group, g.Version(), resource)
+			return fmt.Sprintf("/apis/%s/%s/%s", g.externalGroupVersion.Group, g.externalGroupVersion.Version, resource)
 		}
-		return fmt.Sprintf("/%s/%s/%s/%s", g.Group, g.Version(), resource, name)
+		return fmt.Sprintf("/apis/%s/%s/%s/%s", g.externalGroupVersion.Group, g.externalGroupVersion.Version, resource, name)
 	}
 }
 
@@ -171,12 +145,12 @@ func (g TestGroup) SelfLink(resource, name string) string {
 // /api/v1/watch/namespaces/foo/pods/pod0 for v1.
 func (g TestGroup) ResourcePathWithPrefix(prefix, resource, namespace, name string) string {
 	var path string
-	if len(g.Group) == 0 {
-		path = "/api/" + g.Version()
+	if g.externalGroupVersion.Group == api.GroupName {
+		path = "/api/" + g.externalGroupVersion.Version
 	} else {
 		// TODO: switch back once we have proper multiple group support
 		// path = "/apis/" + g.Group + "/" + Version(group...)
-		path = "/" + g.Group + "/" + g.Version()
+		path = "/apis/" + g.externalGroupVersion.Group + "/" + g.externalGroupVersion.Version
 	}
 
 	if prefix != "" {
@@ -201,4 +175,35 @@ func (g TestGroup) ResourcePathWithPrefix(prefix, resource, namespace, name stri
 // /api/v1/namespaces/foo/pods/pod0 for v1.
 func (g TestGroup) ResourcePath(resource, namespace, name string) string {
 	return g.ResourcePathWithPrefix("", resource, namespace, name)
+}
+
+func (g TestGroup) RESTMapper() meta.RESTMapper {
+	return latest.GroupOrDie(g.externalGroupVersion.Group).RESTMapper
+}
+
+// Get codec based on runtime.Object
+func GetCodecForObject(obj runtime.Object) (runtime.Codec, error) {
+	kind, err := api.Scheme.ObjectKind(obj)
+	if err != nil {
+		return nil, fmt.Errorf("unexpected encoding error: %v", err)
+	}
+
+	for _, group := range Groups {
+		if group.GroupVersion().Group != kind.Group {
+			continue
+		}
+
+		if api.Scheme.Recognizes(kind) {
+			return group.Codec(), nil
+		}
+	}
+	// Codec used for unversioned types
+	if api.Scheme.Recognizes(kind) {
+		return api.Codec, nil
+	}
+	return nil, fmt.Errorf("unexpected kind: %v", kind)
+}
+
+func NewTestGroup(external, internal unversioned.GroupVersion) TestGroup {
+	return TestGroup{external, internal}
 }

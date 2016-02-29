@@ -19,7 +19,10 @@ package conversion
 import (
 	"encoding/json"
 	"fmt"
+	"path"
 	"reflect"
+
+	"k8s.io/kubernetes/pkg/api/unversioned"
 )
 
 // MetaFactory is used to store and retrieve the version and kind
@@ -27,9 +30,9 @@ import (
 type MetaFactory interface {
 	// Update sets the given version and kind onto the object.
 	Update(version, kind string, obj interface{}) error
-	// Interpret should return the version and kind of the wire-format of
+	// Interpret should return the group,version,kind of the wire-format of
 	// the object.
-	Interpret(data []byte) (version, kind string, err error)
+	Interpret(data []byte) (gvk unversioned.GroupVersionKind, err error)
 }
 
 // DefaultMetaFactory is a default factory for versioning objects in JSON. The object
@@ -50,18 +53,23 @@ type SimpleMetaFactory struct {
 	BaseFields []string
 }
 
-// Interpret will return the APIVersion and Kind of the JSON wire-format
+// Interpret will return the group,version,kind of the JSON wire-format
 // encoding of an object, or an error.
-func (SimpleMetaFactory) Interpret(data []byte) (version, kind string, err error) {
+func (SimpleMetaFactory) Interpret(data []byte) (unversioned.GroupVersionKind, error) {
 	findKind := struct {
 		APIVersion string `json:"apiVersion,omitempty"`
 		Kind       string `json:"kind,omitempty"`
 	}{}
-	err = json.Unmarshal(data, &findKind)
+	err := json.Unmarshal(data, &findKind)
 	if err != nil {
-		return "", "", fmt.Errorf("couldn't get version/kind; json parse error: %v", err)
+		return unversioned.GroupVersionKind{}, fmt.Errorf("couldn't get version/kind; json parse error: %v", err)
 	}
-	return findKind.APIVersion, findKind.Kind, nil
+	gv, err := unversioned.ParseGroupVersion(findKind.APIVersion)
+	if err != nil {
+		return unversioned.GroupVersionKind{}, fmt.Errorf("couldn't parse apiVersion: %v", err)
+	}
+
+	return gv.WithKind(findKind.Kind), nil
 }
 
 func (f SimpleMetaFactory) Update(version, kind string, obj interface{}) error {
@@ -72,11 +80,25 @@ func (f SimpleMetaFactory) Update(version, kind string, obj interface{}) error {
 // on a pointer to a struct to version and kind. Provided as a convenience for others
 // implementing MetaFactory. Pass an array to baseFields to check one or more nested structs
 // for the named fields. The version field is treated as optional if it is not present in the struct.
+// TODO: this method is on its way out
 func UpdateVersionAndKind(baseFields []string, versionField, version, kindField, kind string, obj interface{}) error {
+	if typed, ok := obj.(unversioned.ObjectKind); ok {
+		if len(version) == 0 && len(kind) == 0 {
+			typed.SetGroupVersionKind(nil)
+		} else {
+			gv, err := unversioned.ParseGroupVersion(version)
+			if err != nil {
+				return err
+			}
+			typed.SetGroupVersionKind(&unversioned.GroupVersionKind{Group: gv.Group, Version: gv.Version, Kind: kind})
+		}
+		return nil
+	}
 	v, err := EnforcePtr(obj)
 	if err != nil {
 		return err
 	}
+	pkg := path.Base(v.Type().PkgPath())
 	t := v.Type()
 	name := t.Name()
 	if v.Kind() != reflect.Struct {
@@ -93,6 +115,15 @@ func UpdateVersionAndKind(baseFields []string, versionField, version, kindField,
 
 	field := v.FieldByName(kindField)
 	if !field.IsValid() {
+		// Types defined in the unversioned package are allowed to not have a
+		// kindField. Clients will have to know what they are based on the
+		// context.
+		// TODO: add some type trait here, or some way of indicating whether
+		// this feature is allowed on a per-type basis. Using package name is
+		// overly broad and a bit hacky.
+		if pkg == "unversioned" {
+			return nil
+		}
 		return fmt.Errorf("couldn't find %v field in %#v", kindField, v.Interface())
 	}
 	field.SetString(kind)

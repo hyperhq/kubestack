@@ -20,9 +20,10 @@ package util
 
 import (
 	"os"
+	"syscall"
 
-	"github.com/docker/libcontainer/cgroups/fs"
-	"github.com/docker/libcontainer/configs"
+	"github.com/opencontainers/runc/libcontainer/cgroups/fs"
+	"github.com/opencontainers/runc/libcontainer/configs"
 )
 
 // Creates resource-only containerName if it does not already exist and moves
@@ -38,4 +39,8 @@ func RunInResourceContainer(containerName string) error {
 	}
 
 	return manager.Apply(os.Getpid())
+}
+
+func ApplyRLimitForSelf(maxOpenFiles uint64) {
+	syscall.Setrlimit(syscall.RLIMIT_NOFILE, &syscall.Rlimit{Max: maxOpenFiles, Cur: maxOpenFiles})
 }

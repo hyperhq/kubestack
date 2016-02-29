@@ -377,7 +377,7 @@ func InitializeConnection(client *gophercloud.ServiceClient, id string, opts Con
 
 	reqBody := map[string]interface{}{"os-initialize_connection": connctorMap}
 
-	_, res.Err = client.Post(attachURL(client, id), reqBody, &res.Body, &gophercloud.RequestOpts{
+	_, res.Err = client.Post(initializeConnectionURL(client, id), reqBody, &res.Body, &gophercloud.RequestOpts{
 		OkCodes: []int{200, 201, 202},
 	})
 
@@ -395,7 +395,7 @@ func TerminateConnection(client *gophercloud.ServiceClient, id string, opts Conn
 
 	reqBody := map[string]interface{}{"os-terminate_connection": connctorMap}
 
-	_, res.Err = client.Post(attachURL(client, id), reqBody, &res.Body, &gophercloud.RequestOpts{
+	_, res.Err = client.Post(teminateConnectionURL(client, id), reqBody, &res.Body, &gophercloud.RequestOpts{
 		OkCodes: []int{200, 201, 202},
 	})
 
