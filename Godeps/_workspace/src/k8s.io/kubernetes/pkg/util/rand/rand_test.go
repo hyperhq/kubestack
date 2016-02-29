@@ -17,6 +17,7 @@ limitations under the License.
 package rand
 
 import (
+	"math/rand"
 	"strings"
 	"testing"
 )
@@ -31,6 +32,41 @@ func TestString(t *testing.T) {
 		for _, c := range s {
 			if !strings.ContainsRune(valid, c) {
 				t.Errorf("expected valid charaters, got %v", c)
+			}
+		}
+	}
+}
+
+// Confirm that panic occurs on invalid input.
+func TestRangePanic(t *testing.T) {
+	defer func() {
+		if err := recover(); err == nil {
+			t.Errorf("Panic didn't occur!")
+		}
+	}()
+	// Should result in an error...
+	Intn(0)
+}
+
+func TestIntn(t *testing.T) {
+	// 0 is invalid.
+	for _, max := range []int{1, 2, 10, 123} {
+		inrange := Intn(max)
+		if inrange < 0 || inrange > max {
+			t.Errorf("%v out of range (0,%v)", inrange, max)
+		}
+	}
+}
+
+func TestPerm(t *testing.T) {
+	Seed(5)
+	rand.Seed(5)
+	for i := 1; i < 20; i++ {
+		actual := Perm(i)
+		expected := rand.Perm(i)
+		for j := 0; j < i; j++ {
+			if actual[j] != expected[j] {
+				t.Errorf("Perm call result is unexpected")
 			}
 		}
 	}

@@ -61,47 +61,57 @@ func TestSafeFormatAndMount(t *testing.T) {
 			fstype: "ext4",
 		},
 
-		{ // Test that 'file' is called and fails
+		{ // Test that 'lsblk' is called and fails
 			fstype:    "ext4",
 			mountErrs: []error{fmt.Errorf("unknown filesystem type '(null)'")},
 			execScripts: []ExecArgs{
-				{"file", []string{"-L", "--special-files", "/dev/foo"}, "ext4 filesystem", nil},
+				{"lsblk", []string{"-nd", "-o", "FSTYPE", "/dev/foo"}, "ext4", nil},
 			},
 			expectedError: fmt.Errorf("unknown filesystem type '(null)'"),
 		},
-		{ // Test that 'file' is called and confirms unformatted disk, format fails
+		{ // Test that 'lsblk' is called and confirms unformatted disk, format fails
 			fstype:    "ext4",
 			mountErrs: []error{fmt.Errorf("unknown filesystem type '(null)'")},
 			execScripts: []ExecArgs{
-				{"file", []string{"-L", "--special-files", "/dev/foo"}, "data", nil},
+				{"lsblk", []string{"-nd", "-o", "FSTYPE", "/dev/foo"}, "", nil},
 				{"mkfs.ext4", []string{"-E", "lazy_itable_init=0,lazy_journal_init=0", "-F", "/dev/foo"}, "", fmt.Errorf("formatting failed")},
 			},
 			expectedError: fmt.Errorf("formatting failed"),
 		},
-		{ // Test that 'file' is called and confirms unformatted disk, format passes, second mount fails
+		{ // Test that 'lsblk' is called and confirms unformatted disk, format passes, second mount fails
 			fstype:    "ext4",
 			mountErrs: []error{fmt.Errorf("unknown filesystem type '(null)'"), fmt.Errorf("Still cannot mount")},
 			execScripts: []ExecArgs{
-				{"file", []string{"-L", "--special-files", "/dev/foo"}, "data", nil},
+				{"lsblk", []string{"-nd", "-o", "FSTYPE", "/dev/foo"}, "", nil},
 				{"mkfs.ext4", []string{"-E", "lazy_itable_init=0,lazy_journal_init=0", "-F", "/dev/foo"}, "", nil},
 			},
 			expectedError: fmt.Errorf("Still cannot mount"),
 		},
-		{ // Test that 'file' is called and confirms unformatted disk, format passes, second mount passes
+		{ // Test that 'lsblk' is called and confirms unformatted disk, format passes, second mount passes
 			fstype:    "ext4",
 			mountErrs: []error{fmt.Errorf("unknown filesystem type '(null)'"), nil},
 			execScripts: []ExecArgs{
-				{"file", []string{"-L", "--special-files", "/dev/foo"}, "data", nil},
+				{"lsblk", []string{"-nd", "-o", "FSTYPE", "/dev/foo"}, "", nil},
 				{"mkfs.ext4", []string{"-E", "lazy_itable_init=0,lazy_journal_init=0", "-F", "/dev/foo"}, "", nil},
 			},
 			expectedError: nil,
 		},
-		{ // Test that 'file' is called and confirms unformatted disk, format passes, second mount passes with ext3
+		{ // Test that 'lsblk' is called and confirms unformatted disk, format passes, second mount passes with ext3
 			fstype:    "ext3",
 			mountErrs: []error{fmt.Errorf("unknown filesystem type '(null)'"), nil},
 			execScripts: []ExecArgs{
-				{"file", []string{"-L", "--special-files", "/dev/foo"}, "data", nil},
+				{"lsblk", []string{"-nd", "-o", "FSTYPE", "/dev/foo"}, "", nil},
 				{"mkfs.ext3", []string{"-E", "lazy_itable_init=0,lazy_journal_init=0", "-F", "/dev/foo"}, "", nil},
+			},
+			expectedError: nil,
+		},
+		{ // Test that 'lsblk' is called and confirms unformatted disk, format passes, second mount passes
+			// test that none ext4 fs does not get called with ext4 options.
+			fstype:    "xfs",
+			mountErrs: []error{fmt.Errorf("unknown filesystem type '(null)'"), nil},
+			execScripts: []ExecArgs{
+				{"lsblk", []string{"-nd", "-o", "FSTYPE", "/dev/foo"}, "", nil},
+				{"mkfs.xfs", []string{"/dev/foo"}, "", nil},
 			},
 			expectedError: nil,
 		},
@@ -146,7 +156,7 @@ func TestSafeFormatAndMount(t *testing.T) {
 
 		device := "/dev/foo"
 		dest := "/mnt/bar"
-		err := mounter.Mount(device, dest, test.fstype, test.mountOptions)
+		err := mounter.FormatAndMount(device, dest, test.fstype, test.mountOptions)
 		if test.expectedError == nil {
 			if err != nil {
 				t.Errorf("unexpected non-error: %v", err)

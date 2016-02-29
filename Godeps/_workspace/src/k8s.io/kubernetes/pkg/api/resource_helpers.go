@@ -66,12 +66,57 @@ func GetExistingContainerStatus(statuses []ContainerStatus, name string) Contain
 	return ContainerStatus{}
 }
 
-// IsPodReady retruns true if a pod is ready; false otherwise.
+// IsPodReady returns true if a pod is ready; false otherwise.
 func IsPodReady(pod *Pod) bool {
-	for _, c := range pod.Status.Conditions {
-		if c.Type == PodReady && c.Status == ConditionTrue {
-			return true
+	return IsPodReadyConditionTrue(pod.Status)
+}
+
+// IsPodReady retruns true if a pod is ready; false otherwise.
+func IsPodReadyConditionTrue(status PodStatus) bool {
+	condition := GetPodReadyCondition(status)
+	return condition != nil && condition.Status == ConditionTrue
+}
+
+// Extracts the pod ready condition from the given status and returns that.
+// Returns nil if the condition is not present.
+func GetPodReadyCondition(status PodStatus) *PodCondition {
+	for i, c := range status.Conditions {
+		if c.Type == PodReady {
+			return &status.Conditions[i]
+		}
+	}
+	return nil
+}
+
+// IsNodeReady returns true if a node is ready; false otherwise.
+func IsNodeReady(node *Node) bool {
+	for _, c := range node.Status.Conditions {
+		if c.Type == NodeReady {
+			return c.Status == ConditionTrue
 		}
 	}
 	return false
+}
+
+// PodRequestsAndLimits returns a dictionary of all defined resources summed up for all
+// containers of the pod.
+func PodRequestsAndLimits(pod *Pod) (reqs map[ResourceName]resource.Quantity, limits map[ResourceName]resource.Quantity, err error) {
+	reqs, limits = map[ResourceName]resource.Quantity{}, map[ResourceName]resource.Quantity{}
+	for _, container := range pod.Spec.Containers {
+		for name, quantity := range container.Resources.Requests {
+			if value, ok := reqs[name]; !ok {
+				reqs[name] = *quantity.Copy()
+			} else if err = value.Add(quantity); err != nil {
+				return nil, nil, err
+			}
+		}
+		for name, quantity := range container.Resources.Limits {
+			if value, ok := limits[name]; !ok {
+				limits[name] = *quantity.Copy()
+			} else if err = value.Add(quantity); err != nil {
+				return nil, nil, err
+			}
+		}
+	}
+	return
 }

@@ -26,6 +26,12 @@ import (
 	"github.com/google/gofuzz"
 )
 
+func testLogger(t *testing.T) DebugLogger {
+	// We don't set logger to eliminate rubbish logs in tests.
+	// If you want to switch it, simply switch it to: "return t"
+	return nil
+}
+
 func TestConverter_byteSlice(t *testing.T) {
 	c := NewConverter()
 	src := []byte{1, 2, 3}
@@ -35,6 +41,34 @@ func TestConverter_byteSlice(t *testing.T) {
 		t.Fatalf("expected no error")
 	}
 	if e, a := src, dest; !reflect.DeepEqual(e, a) {
+		t.Errorf("expected %#v, got %#v", e, a)
+	}
+}
+
+func TestConverter_MismatchedTypes(t *testing.T) {
+	c := NewConverter()
+
+	err := c.RegisterConversionFunc(
+		func(in *[]string, out *int, s Scope) error {
+			if str, err := strconv.Atoi((*in)[0]); err != nil {
+				return err
+			} else {
+				*out = str
+				return nil
+			}
+		},
+	)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	src := []string{"5"}
+	var dest *int
+	err = c.Convert(&src, &dest, 0, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if e, a := 5, *dest; e != a {
 		t.Errorf("expected %#v, got %#v", e, a)
 	}
 }
@@ -49,7 +83,7 @@ func TestConverter_DefaultConvert(t *testing.T) {
 		Baz int
 	}
 	c := NewConverter()
-	c.Debug = t
+	c.Debug = testLogger(t)
 	c.nameFunc = func(t reflect.Type) string { return "MyType" }
 
 	// Ensure conversion funcs can call DefaultConvert to get default behavior,
@@ -88,7 +122,7 @@ func TestConverter_DeepCopy(t *testing.T) {
 		Qux map[string]string
 	}
 	c := NewConverter()
-	c.Debug = t
+	c.Debug = testLogger(t)
 
 	foo, baz := "foo", "baz"
 	x := A{
@@ -131,7 +165,7 @@ func TestConverter_CallsRegisteredFunctions(t *testing.T) {
 	}
 	type C struct{}
 	c := NewConverter()
-	c.Debug = t
+	c.Debug = testLogger(t)
 	err := c.RegisterConversionFunc(func(in *A, out *B, s Scope) error {
 		out.Bar = in.Foo
 		return s.Convert(&in.Baz, &out.Baz, 0)
@@ -216,7 +250,7 @@ func TestConverter_MapsStringArrays(t *testing.T) {
 		Other string
 	}
 	c := NewConverter()
-	c.Debug = t
+	c.Debug = testLogger(t)
 	if err := c.RegisterConversionFunc(func(input *[]string, out *string, s Scope) error {
 		if len(*input) == 0 {
 			*out = ""
@@ -269,7 +303,7 @@ func TestConverter_MapsStringArraysWithMappingKey(t *testing.T) {
 		Other string
 	}
 	c := NewConverter()
-	c.Debug = t
+	c.Debug = testLogger(t)
 	if err := c.RegisterConversionFunc(func(input *[]string, out *string, s Scope) error {
 		if len(*input) == 0 {
 			*out = ""
@@ -328,7 +362,7 @@ func TestConverter_fuzz(t *testing.T) {
 			reflect.TypeOf(ExternalTestType2{}): "TestType2",
 		}[t]
 	}
-	c.Debug = t
+	c.Debug = testLogger(t)
 
 	for i, item := range table {
 		for j := 0; j < *fuzzIters; j++ {
@@ -358,7 +392,7 @@ func TestConverter_MapElemAddr(t *testing.T) {
 		A map[string]string
 	}
 	c := NewConverter()
-	c.Debug = t
+	c.Debug = testLogger(t)
 	err := c.RegisterConversionFunc(
 		func(in *int, out *string, s Scope) error {
 			*out = fmt.Sprintf("%v", *in)
@@ -404,7 +438,7 @@ func TestConverter_tags(t *testing.T) {
 		A string `test:"bar"`
 	}
 	c := NewConverter()
-	c.Debug = t
+	c.Debug = testLogger(t)
 	err := c.RegisterConversionFunc(
 		func(in *string, out *string, s Scope) error {
 			if e, a := "foo", s.SrcTag().Get("test"); e != a {
@@ -429,7 +463,7 @@ func TestConverter_meta(t *testing.T) {
 	type Foo struct{ A string }
 	type Bar struct{ A string }
 	c := NewConverter()
-	c.Debug = t
+	c.Debug = testLogger(t)
 	checks := 0
 	err := c.RegisterConversionFunc(
 		func(in *Foo, out *Bar, s Scope) error {
@@ -538,7 +572,7 @@ func TestConverter_flags(t *testing.T) {
 	}
 	f := fuzz.New().NilChance(.5).NumElements(0, 100)
 	c := NewConverter()
-	c.Debug = t
+	c.Debug = testLogger(t)
 
 	for i, item := range table {
 		for j := 0; j < *fuzzIters; j++ {
@@ -592,7 +626,7 @@ func TestConverter_FieldRename(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
-	c.Debug = t
+	c.Debug = testLogger(t)
 
 	aVal := &A{
 		WeirdMeta: WeirdMeta{

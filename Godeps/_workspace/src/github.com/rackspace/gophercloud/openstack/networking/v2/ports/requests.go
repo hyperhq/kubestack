@@ -95,17 +95,18 @@ type CreateOptsBuilder interface {
 
 // CreateOpts represents the attributes used when creating a new port.
 type CreateOpts struct {
-	NetworkID      string
-	Name           string
-	AdminStateUp   *bool
-	MACAddress     string
-	FixedIPs       interface{}
-	DeviceID       string
-	DeviceOwner    string
-	DNSName        string
-	TenantID       string
-	HostID         string
-	SecurityGroups []string
+	NetworkID           string
+	Name                string
+	AdminStateUp        *bool
+	MACAddress          string
+	FixedIPs            interface{}
+	DeviceID            string
+	DeviceOwner         string
+	DNSName             string
+	TenantID            string
+	SecurityGroups      []string
+	HostID              string
+	AllowedAddressPairs []AddressPair
 }
 
 // ToPortCreateMap casts a CreateOpts struct to a map.
@@ -126,7 +127,6 @@ func (opts CreateOpts) ToPortCreateMap() (map[string]interface{}, error) {
 	if opts.DNSName != "" {
 		p["dns_name"] = opts.DNSName
 	}
-
 	if opts.FixedIPs != nil {
 		p["fixed_ips"] = opts.FixedIPs
 	}
@@ -144,6 +144,9 @@ func (opts CreateOpts) ToPortCreateMap() (map[string]interface{}, error) {
 	}
 	if opts.MACAddress != "" {
 		p["mac_address"] = opts.MACAddress
+	}
+	if opts.AllowedAddressPairs != nil {
+		p["allowed_address_pairs"] = opts.AllowedAddressPairs
 	}
 	if opts.HostID != "" {
 		p["binding:host_id"] = opts.HostID
@@ -177,14 +180,15 @@ type UpdateOptsBuilder interface {
 
 // UpdateOpts represents the attributes used when updating an existing port.
 type UpdateOpts struct {
-	Name           string
-	AdminStateUp   *bool
-	FixedIPs       interface{}
-	DeviceID       string
-	DeviceOwner    string
-	DNSName        string
-	HostID         string
-	SecurityGroups []string
+	Name                string
+	AdminStateUp        *bool
+	FixedIPs            interface{}
+	DeviceID            string
+	DeviceOwner         string
+	SecurityGroups      []string
+	DNSName             string
+	HostID              string
+	AllowedAddressPairs []AddressPair
 }
 
 // ToPortUpdateMap casts an UpdateOpts struct to a map.
@@ -211,6 +215,9 @@ func (opts UpdateOpts) ToPortUpdateMap() (map[string]interface{}, error) {
 	}
 	if opts.Name != "" {
 		p["name"] = opts.Name
+	}
+	if opts.AllowedAddressPairs != nil {
+		p["allowed_address_pairs"] = opts.AllowedAddressPairs
 	}
 	if opts.HostID != "" {
 		p["binding:host_id"] = opts.HostID

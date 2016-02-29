@@ -27,6 +27,8 @@ type Info interface {
 	GetUID() string
 	// GetGroups returns the names of the groups the user is a member of
 	GetGroups() []string
+
+	GetTenant() string
 }
 
 // DefaultInfo provides a simple user information exchange object
@@ -35,6 +37,7 @@ type DefaultInfo struct {
 	Name   string
 	UID    string
 	Groups []string
+	Tenant string
 }
 
 func (i *DefaultInfo) GetName() string {
@@ -47,4 +50,8 @@ func (i *DefaultInfo) GetUID() string {
 
 func (i *DefaultInfo) GetGroups() []string {
 	return i.Groups
+}
+
+func (i *DefaultInfo) GetTenant() string {
+	return i.Tenant
 }

@@ -24,17 +24,22 @@ import (
 type FakeExec struct {
 	CommandScript []FakeCommandAction
 	CommandCalls  int
+	LookPathFunc  func(string) (string, error)
 }
 
 type FakeCommandAction func(cmd string, args ...string) Cmd
 
 func (fake *FakeExec) Command(cmd string, args ...string) Cmd {
 	if fake.CommandCalls > len(fake.CommandScript)-1 {
-		panic("ran out of Command() actions")
+		panic(fmt.Sprintf("ran out of Command() actions. Could not handle command [%d]: %s args: %v", fake.CommandCalls, cmd, args))
 	}
 	i := fake.CommandCalls
 	fake.CommandCalls++
 	return fake.CommandScript[i](cmd, args...)
+}
+
+func (fake *FakeExec) LookPath(file string) (string, error) {
+	return fake.LookPathFunc(file)
 }
 
 // A simple scripted Cmd type.
@@ -68,6 +73,10 @@ func (fake *FakeCmd) CombinedOutput() ([]byte, error) {
 	fake.CombinedOutputLog = append(fake.CombinedOutputLog, append([]string{}, fake.Argv...))
 	fake.CombinedOutputCalls++
 	return fake.CombinedOutputScript[i]()
+}
+
+func (fake *FakeCmd) Output() ([]byte, error) {
+	return nil, fmt.Errorf("unimplemented")
 }
 
 // A simple fake ExitError type.

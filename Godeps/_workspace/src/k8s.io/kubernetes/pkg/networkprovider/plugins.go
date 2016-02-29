@@ -64,7 +64,7 @@ func InitNetworkProvider(name string) (Interface, error) {
 
 	if name == "" {
 		glog.Info("No network provider specified.")
-		return nil, nil
+		return nil, fmt.Errorf("No network provider specified")
 	}
 
 	var err error
