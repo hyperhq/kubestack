@@ -1363,7 +1363,7 @@ func (os *OpenStack) SetupPod(podName, namespace, podInfraContainerID string, ne
 	// setup interface for pod
 	_, cidr, _ := net.ParseCIDR(subnet.CIDR)
 	prefixSize, _ := cidr.Mask.Size()
-	err = os.Plugin.SetupInterface(podName, podInfraContainerID, port,
+	err = os.Plugin.SetupInterface(podName+"_"+namespace, podInfraContainerID, port,
 		fmt.Sprintf("%s/%d", port.FixedIPs[0].IPAddress, prefixSize),
 		subnet.Gateway, dnsServers, containerRuntime)
 	if err != nil {
@@ -1396,7 +1396,7 @@ func (os *OpenStack) TeardownPod(podName, namespace, podInfraContainerID string,
 	glog.V(4).Infof("Pod %s's port is %v", podName, port)
 
 	// delete interface for docker
-	err = os.Plugin.DestroyInterface(podName, podInfraContainerID, port, containerRuntime)
+	err = os.Plugin.DestroyInterface(podName+"_"+namespace, podInfraContainerID, port, containerRuntime)
 	if err != nil {
 		glog.Errorf("DestroyInterface for pod %s failed: %v", podName, err)
 		return err
