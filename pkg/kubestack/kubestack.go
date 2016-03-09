@@ -223,7 +223,6 @@ func (h *KubeHandler) GetNetwork(req *remote.GetNetworkRequest) common.Response 
 	if err != nil {
 		resp.Err = err.Error()
 	} else {
-		result.TenantID = h.driver.ToTenantName(result.TenantID)
 		resp.Result = result
 	}
 
@@ -278,7 +277,6 @@ func (h *KubeHandler) GetLoadBalancer(req *remote.GetLoadBalancerRequest) common
 	if err != nil {
 		resp.Err = err.Error()
 	} else {
-		lb.TenantID = h.driver.ToTenantName(lb.TenantID)
 		resp.Result = lb
 	}
 
