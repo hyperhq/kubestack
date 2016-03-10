@@ -469,11 +469,13 @@ func (os *OpenStack) DeleteNetwork(networkName string) error {
 
 		// delete all subnets
 		for _, subnet := range osNetwork.Subnets {
-			opts := routers.InterfaceOpts{SubnetID: subnet}
-			_, err := routers.RemoveInterface(os.network, router.ID, opts).Extract()
-			if err != nil {
-				glog.Errorf("Get openstack router %s error: %v", networkName, err)
-				return err
+			if router != nil {
+				opts := routers.InterfaceOpts{SubnetID: subnet}
+				_, err := routers.RemoveInterface(os.network, router.ID, opts).Extract()
+				if err != nil {
+					glog.Errorf("Get openstack router %s error: %v", networkName, err)
+					return err
+				}
 			}
 
 			err = subnets.Delete(os.network, subnet).ExtractErr()
@@ -484,10 +486,12 @@ func (os *OpenStack) DeleteNetwork(networkName string) error {
 		}
 
 		// delete router
-		err = routers.Delete(os.network, router.ID).ExtractErr()
-		if err != nil {
-			glog.Errorf("Delete openstack router %s error: %v", router.ID, err)
-			return err
+		if router != nil {
+			err = routers.Delete(os.network, router.ID).ExtractErr()
+			if err != nil {
+				glog.Errorf("Delete openstack router %s error: %v", router.ID, err)
+				return err
+			}
 		}
 
 		// delete network
