@@ -79,7 +79,7 @@ func (p *OVSPlugin) SetupDockerInterface(podName, podInfraContainerID string, po
 	tapName, vifName := p.buildTapName(port.ID)
 	ret, err := exec.RunCommand("ip", "link", "add", tapName, "type", "veth", "peer", "name", vifName)
 	if err != nil {
-		glog.Warningf("SetupInterface failed: %s", strings.Join(ret, "\n"))
+		glog.Warningf("SetupInterface failed, ret:%s, error:%v", strings.Join(ret, "\n"), err)
 		p.DestroyInterface(podName, podInfraContainerID, port, runtimeTypeDocker)
 		return err
 	}
@@ -87,14 +87,14 @@ func (p *OVSPlugin) SetupDockerInterface(podName, podInfraContainerID string, po
 	bridge := p.buildBridgeName(port.ID)
 	ret, err = exec.RunCommand("brctl", "addif", bridge, tapName)
 	if err != nil {
-		glog.Warningf("SetupInterface failed: %s", strings.Join(ret, "\n"))
+		glog.Warningf("SetupInterface failed, ret:%s, error:%v", strings.Join(ret, "\n"), err)
 		p.DestroyInterface(podName, podInfraContainerID, port, runtimeTypeDocker)
 		return err
 	}
 
 	ret, err = exec.RunCommand("ip", "link", "set", "dev", vifName, "address", port.MACAddress)
 	if err != nil {
-		glog.Warningf("SetupInterface failed: %s", strings.Join(ret, "\n"))
+		glog.Warningf("SetupInterface failed, ret:%s, error:%v", strings.Join(ret, "\n"), err)
 		p.DestroyInterface(podName, podInfraContainerID, port, runtimeTypeDocker)
 		return err
 	}
@@ -109,63 +109,63 @@ func (p *OVSPlugin) SetupDockerInterface(podName, podInfraContainerID string, po
 	ret, err = exec.RunCommand("ln", "-s", fmt.Sprintf("/proc/%s/ns/net", netns),
 		fmt.Sprintf("/var/run/netns/%s", netns))
 	if err != nil {
-		glog.Warningf("SetupInterface failed: %s", strings.Join(ret, "\n"))
+		glog.Warningf("SetupInterface failed, ret:%s, error:%v", strings.Join(ret, "\n"), err)
 		p.DestroyInterface(podName, podInfraContainerID, port, runtimeTypeDocker)
 		return err
 	}
 
 	ret, err = exec.RunCommand("ip", "link", "set", vifName, "netns", netns)
 	if err != nil {
-		glog.Warningf("SetupInterface failed: %s", strings.Join(ret, "\n"))
+		glog.Warningf("SetupInterface failed, ret:%s, error:%v", strings.Join(ret, "\n"), err)
 		p.DestroyInterface(podName, podInfraContainerID, port, runtimeTypeDocker)
 		return err
 	}
 
 	ret, err = exec.RunCommand("ip", "netns", "exec", netns, "ip", "link", "delete", "eth0")
 	if err != nil {
-		glog.Warningf("SetupInterface failed: %s", strings.Join(ret, "\n"))
+		glog.Warningf("SetupInterface failed, ret:%s, error:%v", strings.Join(ret, "\n"), err)
 		p.DestroyInterface(podName, podInfraContainerID, port, runtimeTypeDocker)
 		return err
 	}
 
 	ret, err = exec.RunCommand("ip", "netns", "exec", netns, "ip", "link", "set", vifName, "down")
 	if err != nil {
-		glog.Warningf("SetupInterface failed: %s", strings.Join(ret, "\n"))
+		glog.Warningf("SetupInterface failed, ret:%s, error:%v", strings.Join(ret, "\n"), err)
 		p.DestroyInterface(podName, podInfraContainerID, port, runtimeTypeDocker)
 		return err
 	}
 
 	ret, err = exec.RunCommand("ip", "netns", "exec", netns, "ip", "link", "set", vifName, "name", "eth0")
 	if err != nil {
-		glog.Warningf("SetupInterface failed: %s", strings.Join(ret, "\n"))
+		glog.Warningf("SetupInterface failed, ret:%s, error:%v", strings.Join(ret, "\n"), err)
 		p.DestroyInterface(podName, podInfraContainerID, port, runtimeTypeDocker)
 		return err
 	}
 
 	ret, err = exec.RunCommand("ip", "netns", "exec", netns, "ip", "link", "set", "eth0", "up")
 	if err != nil {
-		glog.Warningf("SetupInterface failed: %s", strings.Join(ret, "\n"))
+		glog.Warningf("SetupInterface failed, ret:%s, error:%v", strings.Join(ret, "\n"), err)
 		p.DestroyInterface(podName, podInfraContainerID, port, runtimeTypeDocker)
 		return err
 	}
 
 	ret, err = exec.RunCommand("ip", "netns", "exec", netns, "ip", "addr", "add", "dev", "eth0", ipcidr)
 	if err != nil {
-		glog.Warningf("SetupInterface failed: %s", strings.Join(ret, "\n"))
+		glog.Warningf("SetupInterface failed, ret:%s, error:%v", strings.Join(ret, "\n"), err)
 		p.DestroyInterface(podName, podInfraContainerID, port, runtimeTypeDocker)
 		return err
 	}
 
 	ret, err = exec.RunCommand("ip", "netns", "exec", netns, "ip", "route", "add", "default", "via", gateway)
 	if err != nil {
-		glog.Warningf("SetupInterface failed: %s", strings.Join(ret, "\n"))
+		glog.Warningf("SetupInterface failed, ret:%s, error:%v", strings.Join(ret, "\n"), err)
 		p.DestroyInterface(podName, podInfraContainerID, port, runtimeTypeDocker)
 		return err
 	}
 
 	ret, err = exec.RunCommand("ip", "link", "set", "dev", tapName, "up")
 	if err != nil {
-		glog.Warningf("SetupInterface failed: %s", strings.Join(ret, "\n"))
+		glog.Warningf("SetupInterface failed, ret:%s, error:%v", strings.Join(ret, "\n"), err)
 		p.DestroyInterface(podName, podInfraContainerID, port, runtimeTypeDocker)
 		return err
 	}
@@ -198,6 +198,7 @@ func (p *OVSPlugin) saveHyperPodSpec(spec, podFullName string) error {
 	specFileName := path.Join(hyperPodSpecDir, podFullName)
 	err := ioutil.WriteFile(specFileName, []byte(spec), 0664)
 	if err != nil {
+		glog.Errorf("SaveHyperPodSpec failed: %v", err)
 		return err
 	}
 
@@ -267,7 +268,7 @@ func (p *OVSPlugin) SetupOVSInterface(podName, podInfraContainerID string, port 
 	qvb, qvo := p.buildVethName(port.ID)
 	ret, err := exec.RunCommand("ip", "link", "add", qvb, "type", "veth", "peer", "name", qvo)
 	if err != nil {
-		glog.Warningf("SetupInterface failed: %s", strings.Join(ret, "\n"))
+		glog.Warningf("SetupInterface failed, ret:%s, error:%v", strings.Join(ret, "\n"), err)
 		p.DestroyInterface(podName, podInfraContainerID, port, containerRuntime)
 		return err
 	}
@@ -275,35 +276,35 @@ func (p *OVSPlugin) SetupOVSInterface(podName, podInfraContainerID string, port 
 	bridge := p.buildBridgeName(port.ID)
 	ret, err = exec.RunCommand("brctl", "addbr", bridge)
 	if err != nil {
-		glog.Warningf("SetupInterface failed: %s", strings.Join(ret, "\n"))
+		glog.Warningf("SetupInterface failed, ret:%s, error:%v", strings.Join(ret, "\n"), err)
 		p.DestroyInterface(podName, podInfraContainerID, port, containerRuntime)
 		return err
 	}
 
 	ret, err = exec.RunCommand("ip", "link", "set", qvb, "up")
 	if err != nil {
-		glog.Warningf("SetupInterface failed: %s", strings.Join(ret, "\n"))
+		glog.Warningf("SetupInterface failed, ret:%s, error:%v", strings.Join(ret, "\n"), err)
 		p.DestroyInterface(podName, podInfraContainerID, port, containerRuntime)
 		return err
 	}
 
 	ret, err = exec.RunCommand("ip", "link", "set", qvo, "up")
 	if err != nil {
-		glog.Warningf("SetupInterface failed: %s", strings.Join(ret, "\n"))
+		glog.Warningf("SetupInterface failed, ret:%s, error:%v", strings.Join(ret, "\n"), err)
 		p.DestroyInterface(podName, podInfraContainerID, port, containerRuntime)
 		return err
 	}
 
 	ret, err = exec.RunCommand("ip", "link", "set", bridge, "up")
 	if err != nil {
-		glog.Warningf("SetupInterface failed: %s", strings.Join(ret, "\n"))
+		glog.Warningf("SetupInterface failed, ret:%s, error:%v", strings.Join(ret, "\n"), err)
 		p.DestroyInterface(podName, podInfraContainerID, port, containerRuntime)
 		return err
 	}
 
 	ret, err = exec.RunCommand("brctl", "addif", bridge, qvb)
 	if err != nil {
-		glog.Warningf("SetupInterface failed: %s", strings.Join(ret, "\n"))
+		glog.Warningf("SetupInterface failed, ret:%s, error:%v", strings.Join(ret, "\n"), err)
 		p.DestroyInterface(podName, podInfraContainerID, port, containerRuntime)
 		return err
 	}
@@ -315,7 +316,7 @@ func (p *OVSPlugin) SetupOVSInterface(podName, podInfraContainerID string, port 
 		fmt.Sprintf("external_ids:vm-id=%s", podName),
 		"external_ids:iface-status=active")
 	if err != nil {
-		glog.Warningf("SetupInterface failed: %s", strings.Join(ret, "\n"))
+		glog.Warningf("SetupInterface failed, ret:%s, error:%v", strings.Join(ret, "\n"), err)
 		p.DestroyInterface(podName, podInfraContainerID, port, containerRuntime)
 		return err
 	}
@@ -326,6 +327,7 @@ func (p *OVSPlugin) SetupOVSInterface(podName, podInfraContainerID string, port 
 func (p *OVSPlugin) SetupInterface(podName, podInfraContainerID string, port *ports.Port, ipcidr, gateway string, dnsServers []string, containerRuntime string) error {
 	err := p.SetupOVSInterface(podName, podInfraContainerID, port, ipcidr, gateway, containerRuntime)
 	if err != nil {
+		glog.Errorf("SetupOVSInterface failed: %v", err)
 		return err
 	}
 
@@ -333,11 +335,13 @@ func (p *OVSPlugin) SetupInterface(podName, podInfraContainerID string, port *po
 	case runtimeTypeDocker:
 		err := p.SetupDockerInterface(podName, podInfraContainerID, port, ipcidr, gateway)
 		if err != nil {
+			glog.Errorf("SetupDockerInterface failed: %v", err)
 			return err
 		}
 	case runtimeTypeHyper:
 		err := p.SetupHyperInterface(podName, podInfraContainerID, port, ipcidr, gateway, dnsServers)
 		if err != nil {
+			glog.Errorf("SetupHyperInterface failed: %v", err)
 			return err
 		}
 	default:
