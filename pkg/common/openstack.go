@@ -1329,6 +1329,7 @@ func (os *OpenStack) SetupPod(podName, namespace, podInfraContainerID string, ne
 	dnsServers := make([]string, 0, 1)
 	networkPorts, err := os.ListPorts(network.UID, "network:dhcp")
 	if err != nil {
+		glog.Errorf("Query dhcp ports failed: %v", err)
 		return err
 	}
 	for _, p := range networkPorts {
@@ -1346,9 +1347,11 @@ func (os *OpenStack) SetupPod(podName, namespace, podInfraContainerID string, ne
 		// Port not found, create one
 		port, err = os.CreatePort(network.UID, network.TenantID, portName, podHostname)
 		if err != nil {
+			glog.Errorf("CreatePort failed: %v", err)
 			return err
 		}
 	} else if err != nil {
+		glog.Errorf("GetPort failed: %v", err)
 		return err
 	}
 
