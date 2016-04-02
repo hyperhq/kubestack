@@ -506,8 +506,8 @@ func (os *OpenStack) DeleteNetwork(networkName string) error {
 }
 
 // List all ports in the network
-func (os *OpenStack) ListPorts(networkID, deviceOwner string) ([]*ports.Port, error) {
-	var results []*ports.Port
+func (os *OpenStack) ListPorts(networkID, deviceOwner string) ([]ports.Port, error) {
+	var results []ports.Port
 	opts := ports.ListOpts{
 		NetworkID:   networkID,
 		DeviceOwner: deviceOwner,
@@ -521,7 +521,7 @@ func (os *OpenStack) ListPorts(networkID, deviceOwner string) ([]*ports.Port, er
 		}
 
 		for _, port := range portList {
-			results = append(results, &port)
+			results = append(results, port)
 		}
 
 		return true, err
