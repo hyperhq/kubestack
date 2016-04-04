@@ -18,403 +18,228 @@ package kubestack
 
 import (
 	"net"
-	"net/http"
 
 	"github.com/golang/glog"
 	"github.com/hyperhq/kubestack/pkg/common"
-	"k8s.io/kubernetes/pkg/networkprovider"
-	"k8s.io/kubernetes/pkg/networkprovider/providers/remote"
+	provider "github.com/hyperhq/kubestack/pkg/types"
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 )
 
 // KubeHandler forwards requests and responses between the docker daemon and the plugin.
 type KubeHandler struct {
 	driver *common.OpenStack
-	mux    *http.ServeMux
+	server *grpc.Server
 }
 
 // NewKubeHandler initializes the request handler with a driver implementation.
 func NewKubeHandler(driver *common.OpenStack) *KubeHandler {
-	h := &KubeHandler{driver, http.NewServeMux()}
-	h.initMux()
+	h := &KubeHandler{
+		driver: driver,
+		server: grpc.NewServer(),
+	}
+	h.registerServer()
 	return h
 }
 
-func (h *KubeHandler) initMux() {
-	h.mux.HandleFunc("/"+remote.ActivateMethod, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", common.DefaultContentType)
-		res := common.Response{Result: true}
-		common.EncodeResponse(w, res)
-	})
-
-	h.mux.HandleFunc("/"+remote.GetNetworkMethod, func(w http.ResponseWriter, r *http.Request) {
-		var req remote.GetNetworkRequest
-		err := common.DecodeRequest(w, r, &req)
-		if err != nil {
-			common.ErrorResponse(w, err)
-			return
-		}
-
-		res := h.GetNetwork(&req)
-		common.EncodeResponse(w, res)
-	})
-
-	h.mux.HandleFunc("/"+remote.CheckTenantIDMethod, func(w http.ResponseWriter, r *http.Request) {
-		var req remote.CheckTenantIDRequest
-		err := common.DecodeRequest(w, r, &req)
-		if err != nil {
-			common.ErrorResponse(w, err)
-			return
-		}
-
-		res := h.CheckTenantID(&req)
-		common.EncodeResponse(w, res)
-	})
-
-	h.mux.HandleFunc("/"+remote.CreateNetworkMethod, func(w http.ResponseWriter, r *http.Request) {
-		var req remote.CreateNetworkRequest
-		err := common.DecodeRequest(w, r, &req)
-		if err != nil {
-			common.ErrorResponse(w, err)
-			return
-		}
-
-		res := h.CreateNetwork(&req)
-		common.EncodeResponse(w, res)
-	})
-
-	h.mux.HandleFunc("/"+remote.UpdateNetworkMethod, func(w http.ResponseWriter, r *http.Request) {
-		var req remote.UpdateNetworkRequest
-		err := common.DecodeRequest(w, r, &req)
-		if err != nil {
-			common.ErrorResponse(w, err)
-			return
-		}
-
-		res := h.UpdateNetwork(&req)
-		common.EncodeResponse(w, res)
-	})
-
-	h.mux.HandleFunc("/"+remote.DeleteNetworkMethod, func(w http.ResponseWriter, r *http.Request) {
-		var req remote.DeleteNetworkRequest
-		err := common.DecodeRequest(w, r, &req)
-		if err != nil {
-			common.ErrorResponse(w, err)
-			return
-		}
-
-		res := h.DeleteNetwork(&req)
-		common.EncodeResponse(w, res)
-	})
-
-	h.mux.HandleFunc("/"+remote.GetLoadBalancerMethod, func(w http.ResponseWriter, r *http.Request) {
-		var req remote.GetLoadBalancerRequest
-		err := common.DecodeRequest(w, r, &req)
-		if err != nil {
-			common.ErrorResponse(w, err)
-			return
-		}
-
-		res := h.GetLoadBalancer(&req)
-		common.EncodeResponse(w, res)
-	})
-
-	h.mux.HandleFunc("/"+remote.CreateLoadBalancerMethod, func(w http.ResponseWriter, r *http.Request) {
-		var req remote.CreateLoadBalancerRequest
-		err := common.DecodeRequest(w, r, &req)
-		if err != nil {
-			common.ErrorResponse(w, err)
-			return
-		}
-
-		res := h.CreateLoadBalancer(&req)
-		common.EncodeResponse(w, res)
-	})
-
-	h.mux.HandleFunc("/"+remote.UpdateLoadBalancerMethod, func(w http.ResponseWriter, r *http.Request) {
-		var req remote.UpdateLoadBalancerRequest
-		err := common.DecodeRequest(w, r, &req)
-		if err != nil {
-			common.ErrorResponse(w, err)
-			return
-		}
-
-		res := h.UpdateLoadBalancer(&req)
-		common.EncodeResponse(w, res)
-	})
-
-	h.mux.HandleFunc("/"+remote.DeleteLoadBalancerMethod, func(w http.ResponseWriter, r *http.Request) {
-		var req remote.DeleteLoadBalancerRequest
-		err := common.DecodeRequest(w, r, &req)
-		if err != nil {
-			common.ErrorResponse(w, err)
-			return
-		}
-
-		res := h.DeleteLoadBalancer(&req)
-		common.EncodeResponse(w, res)
-	})
-
-	// kubelet methods
-	h.mux.HandleFunc("/"+remote.SetupPodMethod, func(w http.ResponseWriter, r *http.Request) {
-		var req remote.SetupPodRequest
-		err := common.DecodeRequest(w, r, &req)
-		if err != nil {
-			common.ErrorResponse(w, err)
-			return
-		}
-
-		res := h.SetupPod(&req)
-		common.EncodeResponse(w, res)
-	})
-
-	h.mux.HandleFunc("/"+remote.TeardownPodMethod, func(w http.ResponseWriter, r *http.Request) {
-		var req remote.TeardownPodRequest
-		err := common.DecodeRequest(w, r, &req)
-		if err != nil {
-			common.ErrorResponse(w, err)
-			return
-		}
-
-		res := h.TeardownPod(&req)
-		common.EncodeResponse(w, res)
-	})
-
-	h.mux.HandleFunc("/"+remote.PodStatudMethod, func(w http.ResponseWriter, r *http.Request) {
-		var req remote.PodStatusRequest
-		err := common.DecodeRequest(w, r, &req)
-		if err != nil {
-			common.ErrorResponse(w, err)
-			return
-		}
-
-		res := h.PodStatus(&req)
-		common.EncodeResponse(w, res)
-	})
+func (h *KubeHandler) Serve(addr string) error {
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		glog.Fatal("Failed to listen: %s", addr)
+		return err
+	}
+	return h.server.Serve(l)
 }
 
-func (h *KubeHandler) CheckTenantID(req *remote.CheckTenantIDRequest) common.Response {
-	glog.V(4).Infof("CheckTenantID with request %v", req)
+func (h *KubeHandler) registerServer() {
+	provider.RegisterLoadBalancersServer(h.server, h)
+	provider.RegisterNetworksServer(h.server, h)
+	provider.RegisterPodsServer(h.server, h)
+}
 
-	var resp common.Response
+func (h *KubeHandler) Active(c context.Context, req *provider.ActiveRequest) (*provider.ActivateResponse, error) {
+	glog.V(3).Infof("Activating called")
+
+	resp := provider.ActivateResponse{
+		Result: true,
+	}
+
+	return &resp, nil
+}
+
+func (h *KubeHandler) CheckTenantID(c context.Context, req *provider.CheckTenantIDRequest) (*provider.CheckTenantIDResponse, error) {
+	glog.V(4).Infof("CheckTenantID with request %v", req.TenantID)
+
+	resp := provider.CheckTenantIDResponse{}
 	checkResult, err := h.driver.CheckTenantID(req.TenantID)
 	if err != nil {
-		resp.Err = err.Error()
+		resp.Error = err.Error()
 	} else {
 		resp.Result = checkResult
-		resp.Err = ""
 	}
 
 	glog.V(4).Infof("CheckTenantID result %v", resp)
-	return resp
+	return &resp, nil
 }
 
-func (h *KubeHandler) GetNetwork(req *remote.GetNetworkRequest) common.Response {
-	glog.V(4).Infof("GetNetwork with request %v", req)
+func (h *KubeHandler) GetNetwork(c context.Context, req *provider.GetNetworkRequest) (*provider.GetNetworkResponse, error) {
+	glog.V(4).Infof("GetNetwork with request %v", req.String())
 
-	var resp common.Response
-	var result *networkprovider.Network
+	resp := provider.GetNetworkResponse{}
+	var result *provider.Network
 	var err error
-	if req.ID != "" {
-		result, err = h.driver.GetNetworkByID(req.ID)
+	if req.Id != "" {
+		result, err = h.driver.GetNetworkByID(req.Id)
 	} else if req.Name != "" {
 		result, err = h.driver.GetNetwork(req.Name)
 	}
 
 	if err != nil {
-		resp.Err = err.Error()
+		resp.Error = err.Error()
 	} else {
-		resp.Result = result
+		resp.Network = result
 	}
 
 	glog.V(4).Infof("GetNetwork result %v", resp)
-	return resp
+	return &resp, nil
 }
 
-func (h *KubeHandler) CreateNetwork(req *remote.CreateNetworkRequest) common.Response {
+func (h *KubeHandler) CreateNetwork(c context.Context, req *provider.CreateNetworkRequest) (*provider.CommonResponse, error) {
 	glog.V(4).Infof("CreateNetwork with request %v", req)
 
-	var resp common.Response
+	resp := provider.CommonResponse{}
 	req.Network.TenantID = h.driver.ToTenantID(req.Network.TenantID)
 	err := h.driver.CreateNetwork(req.Network)
 	if err != nil {
-		resp.Err = err.Error()
+		resp.Error = err.Error()
 	}
 
 	glog.V(4).Infof("CreateNetwork result %v", resp)
-	return resp
+	return &resp, nil
 }
 
-func (h *KubeHandler) UpdateNetwork(req *remote.UpdateNetworkRequest) common.Response {
-	glog.V(4).Infof("UpdateNetwork with request %v", req)
+func (h *KubeHandler) UpdateNetwork(c context.Context, req *provider.UpdateNetworkRequest) (*provider.CommonResponse, error) {
+	glog.V(4).Infof("UpdateNetwork with request %v", req.String())
 
-	var resp common.Response
+	resp := provider.CommonResponse{}
 	req.Network.TenantID = h.driver.ToTenantID(req.Network.TenantID)
 	err := h.driver.UpdateNetwork(req.Network)
 	if err != nil {
-		resp.Err = err.Error()
+		resp.Error = err.Error()
 	}
 
 	glog.V(4).Infof("UpdateNetwork result %v", resp)
-	return resp
+	return &resp, nil
 }
 
-func (h *KubeHandler) DeleteNetwork(req *remote.DeleteNetworkRequest) common.Response {
-	glog.V(4).Infof("DeleteNetwork with request %v", req)
+func (h *KubeHandler) DeleteNetwork(c context.Context, req *provider.DeleteNetworkRequest) (*provider.CommonResponse, error) {
+	glog.V(4).Infof("DeleteNetwork with request %v", req.String())
 
-	var resp common.Response
-	err := h.driver.DeleteNetwork(req.Name)
+	resp := provider.CommonResponse{}
+	err := h.driver.DeleteNetwork(req.NetworkName)
 	if err != nil {
-		resp.Err = err.Error()
+		resp.Error = err.Error()
 	}
 
 	glog.V(4).Infof("DeleteNetwork result %v", resp)
-	return resp
+	return &resp, nil
 }
 
-func (h *KubeHandler) GetLoadBalancer(req *remote.GetLoadBalancerRequest) common.Response {
-	var resp common.Response
+func (h *KubeHandler) GetLoadBalancer(c context.Context, req *provider.GetLoadBalancerRequest) (*provider.GetLoadBalancerResponse, error) {
+	resp := provider.GetLoadBalancerResponse{}
 	lb, err := h.driver.GetLoadBalancer(req.Name)
 	if err != nil {
-		resp.Err = err.Error()
+		resp.Error = err.Error()
 	} else {
-		resp.Result = lb
+		resp.LoadBalancer = lb
 	}
 
-	return resp
+	return &resp, nil
 }
 
-func (h *KubeHandler) CreateLoadBalancer(req *remote.CreateLoadBalancerRequest) common.Response {
-	glog.V(4).Infof("CreateLoadBalancer with request %v", req)
+func (h *KubeHandler) CreateLoadBalancer(c context.Context, req *provider.CreateLoadBalancerRequest) (*provider.CreateLoadBalancerResponse, error) {
+	glog.V(4).Infof("CreateLoadBalancer with request %v", req.String())
 
-	var resp common.Response
+	resp := provider.CreateLoadBalancerResponse{}
 	req.LoadBalancer.TenantID = h.driver.ToTenantID(req.LoadBalancer.TenantID)
 	vip, err := h.driver.CreateLoadBalancer(req.LoadBalancer, string(req.Affinity))
 	if err != nil {
-		resp.Err = err.Error()
+		resp.Error = err.Error()
+	} else {
+		resp.Vip = vip
 	}
-
-	result := make(map[string]string)
-	if vip != "" {
-		result["VIP"] = vip
-	}
-	resp.Result = result
 
 	glog.V(4).Infof("CreateLoadBalancer result %v", resp)
-	return resp
+	return &resp, nil
 }
 
-func (h *KubeHandler) UpdateLoadBalancer(req *remote.UpdateLoadBalancerRequest) common.Response {
-	glog.V(4).Infof("UpdateLoadBalancer with request %v", req)
+func (h *KubeHandler) UpdateLoadBalancer(c context.Context, req *provider.UpdateLoadBalancerRequest) (*provider.UpdateLoadBalancerResponse, error) {
+	glog.V(4).Infof("UpdateLoadBalancer with request %v", req.String())
 
-	var resp common.Response
+	resp := provider.UpdateLoadBalancerResponse{}
 	vip, err := h.driver.UpdateLoadBalancer(req.Name, req.Hosts, req.ExternalIPs)
 	if err != nil {
-		resp.Err = err.Error()
+		resp.Error = err.Error()
+	} else {
+		resp.Vip = vip
 	}
-
-	result := make(map[string]string)
-	if vip != "" {
-		result["VIP"] = vip
-	}
-	resp.Result = result
 
 	glog.V(4).Infof("UpdateLoadBalancer result %v", resp)
-	return resp
+
+	return &resp, nil
 }
 
-func (h *KubeHandler) DeleteLoadBalancer(req *remote.DeleteLoadBalancerRequest) common.Response {
-	glog.V(4).Infof("DeleteLoadBalancer with request %v", req)
+func (h *KubeHandler) DeleteLoadBalancer(c context.Context, req *provider.DeleteLoadBalancerRequest) (*provider.CommonResponse, error) {
+	glog.V(4).Infof("DeleteLoadBalancer with request %v", req.String())
 
-	var resp common.Response
+	resp := provider.CommonResponse{}
 	err := h.driver.DeleteLoadBalancer(req.Name)
 	if err != nil {
-		resp.Err = err.Error()
+		resp.Error = err.Error()
 	}
 
 	glog.V(4).Infof("DeleteLoadBalancer result %v", resp)
-	return resp
+	return &resp, nil
 }
 
-// ServeTCP makes the handler to listen for request in a given TCP address.
-// It also writes the spec file on the right directory for docker to read.
-func (h *KubeHandler) ServeTCP(pluginName, addr string) error {
-	return h.listenAndServe("tcp", addr, pluginName)
-}
+func (h *KubeHandler) SetupPod(c context.Context, req *provider.SetupPodRequest) (*provider.CommonResponse, error) {
+	glog.V(4).Infof("SetupPod with request %v", req.String())
 
-// ServeUnix makes the handler to listen for requests in a unix socket.
-// It also creates the socket file on the right directory for docker to read.
-func (h *KubeHandler) ServeUnix(systemGroup, addr string) error {
-	return h.listenAndServe("unix", addr, systemGroup)
-}
-
-func (h *KubeHandler) listenAndServe(proto, addr, group string) error {
-	server := http.Server{
-		Addr:    addr,
-		Handler: h.mux,
-	}
-
-	start := make(chan struct{})
-
-	var l net.Listener
-	var err error
-	switch proto {
-	case "tcp":
-		l, err = common.NewTCPSocket(addr, nil, start)
-		if err == nil {
-			err = common.WriteSpec(group, l.Addr().String(), common.KubestackSpecDir)
-		}
-	case "unix":
-		var s string
-		s, err = common.FullSocketAddr(addr, common.KubestackSockDir)
-		if err == nil {
-			l, err = common.NewUnixSocket(s, group, start)
-		}
-	}
-	if err != nil {
-		return err
-	}
-
-	close(start)
-	return server.Serve(l)
-}
-
-func (h *KubeHandler) SetupPod(req *remote.SetupPodRequest) common.Response {
-	glog.V(4).Infof("SetupPod with request %v", req)
-
-	var resp common.Response
+	resp := provider.CommonResponse{}
+	// TODO: Add hostname in SetupPod Interface
 	err := h.driver.SetupPod(req.PodName, req.Namespace, req.PodInfraContainerID, req.Network, req.ContainerRuntime)
 	if err != nil {
 		glog.Errorf("SetupPod failed: %v", err)
-		resp.Err = err.Error()
+		resp.Error = err.Error()
 	}
 
-	return resp
+	return &resp, nil
 }
 
-func (h *KubeHandler) TeardownPod(req *remote.TeardownPodRequest) common.Response {
-	glog.V(4).Infof("TeardownPod with request %v", req)
+func (h *KubeHandler) TeardownPod(c context.Context, req *provider.TeardownPodRequest) (*provider.CommonResponse, error) {
+	glog.V(4).Infof("TeardownPod with request %v", req.String())
 
-	var resp common.Response
+	resp := provider.CommonResponse{}
 	err := h.driver.TeardownPod(req.PodName, req.Namespace, req.PodInfraContainerID, req.Network, req.ContainerRuntime)
 	if err != nil {
 		glog.Errorf("TeardownPod failed: %v", err)
-		resp.Err = err.Error()
+		resp.Error = err.Error()
 	}
 
-	return resp
+	return &resp, nil
 }
 
-func (h *KubeHandler) PodStatus(req *remote.PodStatusRequest) common.Response {
-	glog.V(4).Infof("PodStatus with request %v", req)
+func (h *KubeHandler) PodStatus(c context.Context, req *provider.PodStatusRequest) (*provider.PodStatusResponse, error) {
+	glog.V(4).Infof("PodStatus with request %v", req.String())
 
-	var resp common.Response
+	resp := provider.PodStatusResponse{}
 	ip, err := h.driver.PodStatus(req.PodName, req.Namespace, req.PodInfraContainerID, req.Network, req.ContainerRuntime)
 	if err != nil {
 		glog.Errorf("PodStatus failed: %v", err)
-		resp.Err = err.Error()
+		resp.Error = err.Error()
 	} else {
-		resp.Result = &remote.PodStatusResult{IP: ip}
+		resp.Ip = ip
 	}
 
-	return resp
+	return &resp, nil
 }

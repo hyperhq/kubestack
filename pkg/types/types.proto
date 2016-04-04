@@ -1,0 +1,186 @@
+// Generate cmd: protoc --go_out=plugins=grpc:. types.proto
+syntax = "proto3";
+
+package types;
+
+
+service Networks {
+    rpc Active(ActiveRequest) returns (ActivateResponse) {}
+    rpc CheckTenantID(CheckTenantIDRequest) returns (CheckTenantIDResponse) {}
+    rpc GetNetwork(GetNetworkRequest) returns (GetNetworkResponse) {}
+    rpc CreateNetwork(CreateNetworkRequest) returns (CommonResponse) {}
+    rpc UpdateNetwork(UpdateNetworkRequest) returns (CommonResponse) {}
+    rpc DeleteNetwork(DeleteNetworkRequest) returns (CommonResponse) {}
+}
+
+service LoadBalancers {
+	rpc GetLoadBalancer(GetLoadBalancerRequest) returns (GetLoadBalancerResponse) {}
+	rpc CreateLoadBalancer(CreateLoadBalancerRequest) returns (CreateLoadBalancerResponse) {}
+	rpc UpdateLoadBalancer(UpdateLoadBalancerRequest) returns (UpdateLoadBalancerResponse) {}
+	rpc DeleteLoadBalancer(DeleteLoadBalancerRequest) returns (CommonResponse) {}
+}
+
+service Pods {
+	rpc SetupPod(SetupPodRequest) returns (CommonResponse) {}
+	rpc TeardownPod(TeardownPodRequest) returns (CommonResponse) {}
+	rpc PodStatus(PodStatusRequest) returns (PodStatusResponse) {}
+}
+
+message ActiveRequest {
+}
+
+message ActivateResponse {
+	bool result     = 1;
+	string error    = 2;
+}
+
+message CommonResponse {
+    string error = 1;
+}
+
+// Subnet is a representaion of a subnet
+message Subnet {
+	string name                = 1;
+	string uid        = 2;
+	string cidr                = 3;
+	string gateway             = 4;
+	string tenantid            = 5;
+	repeated string dnsservers = 6;
+	repeated Route routes      = 7;
+}
+
+// Route is a representation of an advanced routing rule.
+message Route {
+	string name            = 1;
+	string nexthop         = 2;
+	string destinationCIDR = 3;
+}
+
+
+message Network {
+    string name             = 1;
+    string uid     = 2;
+    string tenantID         = 3;
+    int32 segmentID  = 4;
+    repeated Subnet subnets = 5;
+    // Status of network
+    // Valid value: Initializing, Active, Pending, Failed, Terminating
+    string status            = 6;
+}
+
+message GetNetworkRequest {
+    string name = 1;
+    string id   = 2;
+}
+
+message GetNetworkResponse {
+    Network network = 1;
+    string error    = 2;
+}
+
+message CreateNetworkRequest {
+    Network network  = 1;
+}
+
+message UpdateNetworkRequest {
+    Network network = 1;
+}
+
+message DeleteNetworkRequest {
+    string networkName = 1;
+}
+
+message GetLoadBalancerRequest {
+    string name = 1;
+}
+
+message GetLoadBalancerResponse {
+    LoadBalancer loadBalancer   = 1;
+    string error                = 2;
+}
+
+message HostPort {
+    string name         = 1;
+    string ipaddress    = 2;
+    int32 servicePort     = 3;
+    int32 targetPort      = 4;
+}
+
+// LoadBalancer is a replace of kube-proxy, so load-balancing can be handled
+// by network providers so as to overcome iptables overhead
+message LoadBalancer {
+	string name                 = 1;
+	string uid         = 2;
+	string vip         = 3;
+	// Valid values: "TCP", "UDP", "HTTP", "HTTPS"
+	string loadBalanceType      = 4;
+    string status      = 5;
+    string tenantID             = 6;
+    repeated string externalIPs = 7;
+    repeated Subnet subnets     = 8;
+    repeated HostPort hosts     = 9;
+}
+
+message CreateLoadBalancerRequest {
+    LoadBalancer loadBalancer   = 1;
+    // Valid value: ClientIP, None
+    string affinity             = 2;
+}
+
+message CreateLoadBalancerResponse {
+	string vip      = 1;
+	string error    = 2;
+}
+
+message UpdateLoadBalancerRequest {
+    string name                 = 1;
+    repeated string externalIPs = 2;
+    repeated HostPort hosts     = 3;
+}
+
+message UpdateLoadBalancerResponse {
+	string vip      = 1;
+    string error    = 2;
+}
+
+message DeleteLoadBalancerRequest {
+	string name = 1;
+}
+
+message CheckTenantIDRequest {
+	string tenantID = 1;
+}
+
+message CheckTenantIDResponse {
+	bool result     = 1;
+	string error    = 2;
+}
+
+message SetupPodRequest {
+    string podName =             1;
+    string namespace            = 2;
+    string containerRuntime     = 3;
+    string podInfraContainerID  = 4;
+    Network network             = 5;
+}
+
+message TeardownPodRequest {
+    string podName =             1;
+    string namespace            = 2;
+    string containerRuntime     = 3;
+    string podInfraContainerID  = 4;
+    Network network             = 5;
+}
+
+message PodStatusRequest {
+    string podName =             1;
+    string namespace            = 2;
+    string containerRuntime     = 3;
+    string podInfraContainerID  = 4;
+    Network network             = 5;
+}
+
+message PodStatusResponse {
+	string ip       = 1;
+    string error    = 2;
+}

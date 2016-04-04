@@ -26,20 +26,20 @@ import (
 )
 
 const (
-	VERSION = "0.1"
+	VERSION = "0.5"
 )
 
 func main() {
 	var (
-		version     bool
-		configFile  string
-		systemGroup string
+		version    bool
+		configFile string
+		port       string
 	)
 
 	flag.BoolVar(&version, "version", false, "print version and exit")
 	flag.StringVar(&configFile, "conf", "/etc/kubestack.conf",
 		"openstack network controller configure file")
-	flag.StringVar(&systemGroup, "group", "root", "system group this process will run as")
+	flag.StringVar(&port, "port", ":4237", "which port to listen on, e.g. 127.0.0.1:4237")
 
 	flag.Parse()
 
@@ -62,5 +62,5 @@ func main() {
 	}
 
 	server := kubestack.NewKubeHandler(openstack)
-	fmt.Println(server.ServeUnix(systemGroup, "openstack"))
+	fmt.Println(server.Serve(port))
 }
