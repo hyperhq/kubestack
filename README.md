@@ -45,11 +45,12 @@ Start:
 
 ```
 # Start kubestack on each machine
-kubestack -logtostderr=true -v=4 -group=kube
+kubestack -logtostderr=true -v=4 -port=:4237
 ```
 
-Configure kubernetes controller manage using openstack network provider:
+Configure kubernetes `controller-manager` and `kubelet` using openstack network provider:
 
 ```
-kube-controller-manager -network-provider=openstack -...
+kube-controller-manager --network-provider=localhost:4237 --...
+kubelet --network-provider=127.0.0.1:4237 --....
 ```

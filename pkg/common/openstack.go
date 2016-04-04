@@ -30,6 +30,7 @@ import (
 	"github.com/docker/distribution/uuid"
 	"github.com/golang/glog"
 	"github.com/hyperhq/kubestack/pkg/plugins"
+	provider "github.com/hyperhq/kubestack/pkg/types"
 	"github.com/rackspace/gophercloud"
 	"github.com/rackspace/gophercloud/openstack"
 	"github.com/rackspace/gophercloud/openstack/identity/v2/tenants"
@@ -45,7 +46,6 @@ import (
 	"github.com/rackspace/gophercloud/openstack/networking/v2/ports"
 	"github.com/rackspace/gophercloud/openstack/networking/v2/subnets"
 	"github.com/rackspace/gophercloud/pagination"
-	"k8s.io/kubernetes/pkg/networkprovider"
 
 	// import plugins
 	_ "github.com/hyperhq/kubestack/pkg/plugins/openvswitch"
@@ -60,6 +60,9 @@ const (
 	ServiceAffinityNone     = "None"
 	ServiceAffinityClientIP = "ClientIP"
 )
+
+var ErrNotFound = errors.New("NotFound")
+var ErrMultipleResults = errors.New("MultipleResults")
 
 // encoding.TextUnmarshaler interface for time.Duration
 type MyDuration struct {
@@ -216,7 +219,7 @@ func (os *OpenStack) getOpenStackNetwork(opts *networks.ListOpts) (*networks.Net
 	err := pager.EachPage(func(page pagination.Page) (bool, error) {
 		networkList, e := networks.ExtractNetworks(page)
 		if len(networkList) > 1 {
-			return false, networkprovider.ErrMultipleResults
+			return false, ErrMultipleResults
 		}
 
 		if len(networkList) == 1 {
@@ -227,43 +230,43 @@ func (os *OpenStack) getOpenStackNetwork(opts *networks.ListOpts) (*networks.Net
 	})
 
 	if err == nil && osNetwork == nil {
-		return nil, networkprovider.ErrNotFound
+		return nil, ErrNotFound
 	}
 
 	return osNetwork, err
 }
 
 // Get provider subnet by id
-func (os *OpenStack) getProviderSubnet(osSubnetID string) (*networkprovider.Subnet, error) {
+func (os *OpenStack) getProviderSubnet(osSubnetID string) (*provider.Subnet, error) {
 	s, err := subnets.Get(os.network, osSubnetID).Extract()
 	if err != nil {
 		glog.Errorf("Get openstack subnet failed: %v", err)
 		return nil, err
 	}
 
-	var routes []*networkprovider.Route
+	var routes []*provider.Route
 	for _, r := range s.HostRoutes {
-		route := networkprovider.Route{
+		route := provider.Route{
 			Nexthop:         r.NextHop,
 			DestinationCIDR: r.DestinationCIDR,
 		}
 		routes = append(routes, &route)
 	}
 
-	providerSubnet := networkprovider.Subnet{
-		UID:           s.ID,
-		CIDR:          s.CIDR,
-		Gateway:       s.GatewayIP,
-		Name:          s.Name,
-		DNSNameServer: s.DNSNameservers,
-		Routes:        routes,
+	providerSubnet := provider.Subnet{
+		Uid:        s.ID,
+		Cidr:       s.CIDR,
+		Gateway:    s.GatewayIP,
+		Name:       s.Name,
+		Dnsservers: s.DNSNameservers,
+		Routes:     routes,
 	}
 
 	return &providerSubnet, nil
 }
 
 // Get network by networkID
-func (os *OpenStack) GetNetworkByID(networkID string) (*networkprovider.Network, error) {
+func (os *OpenStack) GetNetworkByID(networkID string) (*provider.Network, error) {
 	osNetwork, err := os.getOpenStackNetworkByID(networkID)
 	if err != nil {
 		glog.Errorf("Get openstack network failed: %v", err)
@@ -274,7 +277,7 @@ func (os *OpenStack) GetNetworkByID(networkID string) (*networkprovider.Network,
 }
 
 // Get network by networkName
-func (os *OpenStack) GetNetwork(networkName string) (*networkprovider.Network, error) {
+func (os *OpenStack) GetNetwork(networkName string) (*provider.Network, error) {
 	osNetwork, err := os.getOpenStackNetworkByName(networkName)
 	if err != nil {
 		glog.Errorf("Get openstack network failed: %v", err)
@@ -284,11 +287,11 @@ func (os *OpenStack) GetNetwork(networkName string) (*networkprovider.Network, e
 	return os.OSNetworktoProviderNetwork(osNetwork)
 }
 
-func (os *OpenStack) OSNetworktoProviderNetwork(osNetwork *networks.Network) (*networkprovider.Network, error) {
-	var providerNetwork networkprovider.Network
-	var providerSubnets []*networkprovider.Subnet
+func (os *OpenStack) OSNetworktoProviderNetwork(osNetwork *networks.Network) (*provider.Network, error) {
+	var providerNetwork provider.Network
+	var providerSubnets []*provider.Subnet
 	providerNetwork.Name = osNetwork.Name
-	providerNetwork.UID = osNetwork.ID
+	providerNetwork.Uid = osNetwork.ID
 	providerNetwork.Status = os.ToProviderStatus(osNetwork.Status)
 	providerNetwork.TenantID = osNetwork.TenantID
 
@@ -305,23 +308,23 @@ func (os *OpenStack) OSNetworktoProviderNetwork(osNetwork *networks.Network) (*n
 	return &providerNetwork, nil
 }
 
-func (os *OpenStack) ToProviderStatus(status string) networkprovider.NetworkStatus {
+func (os *OpenStack) ToProviderStatus(status string) string {
 	switch status {
 	case "ACTIVE":
-		return networkprovider.NetworkActive
+		return "Active"
 	case "BUILD":
-		return networkprovider.NetworkPending
+		return "Pending"
 	case "DOWN", "ERROR":
-		return networkprovider.NetworkFailed
+		return "Failed"
 	default:
-		return networkprovider.NetworkFailed
+		return "Failed"
 	}
 
-	return networkprovider.NetworkFailed
+	return "Failed"
 }
 
 // Create network
-func (os *OpenStack) CreateNetwork(network *networkprovider.Network) error {
+func (os *OpenStack) CreateNetwork(network *provider.Network) error {
 	if len(network.Subnets) == 0 {
 		return errors.New("Subnets is null")
 	}
@@ -357,17 +360,17 @@ func (os *OpenStack) CreateNetwork(network *networkprovider.Network) error {
 	// create subnets and connect them to router
 	networkID := osNet.ID
 	network.Status = os.ToProviderStatus(osNet.Status)
-	network.UID = osNet.ID
+	network.Uid = osNet.ID
 	for _, sub := range network.Subnets {
 		// create subnet
 		subnetOpts := subnets.CreateOpts{
 			NetworkID:      networkID,
-			CIDR:           sub.CIDR,
+			CIDR:           sub.Cidr,
 			Name:           sub.Name,
 			IPVersion:      subnets.IPv4,
 			TenantID:       network.TenantID,
 			GatewayIP:      sub.Gateway,
-			DNSNameservers: sub.DNSNameServer,
+			DNSNameservers: sub.Dnsservers,
 		}
 		s, err := subnets.Create(os.network, subnetOpts).Extract()
 		if err != nil {
@@ -398,7 +401,7 @@ func (os *OpenStack) CreateNetwork(network *networkprovider.Network) error {
 }
 
 // Update network
-func (os *OpenStack) UpdateNetwork(network *networkprovider.Network) error {
+func (os *OpenStack) UpdateNetwork(network *provider.Network) error {
 	// TODO: update network subnets
 	return nil
 }
@@ -411,7 +414,7 @@ func (os *OpenStack) getRouterByName(name string) (*routers.Router, error) {
 	err := pager.EachPage(func(page pagination.Page) (bool, error) {
 		routerList, e := routers.ExtractRouters(page)
 		if len(routerList) > 1 {
-			return false, networkprovider.ErrMultipleResults
+			return false, ErrMultipleResults
 		} else if len(routerList) == 1 {
 			result = &routerList[0]
 		}
@@ -813,11 +816,11 @@ func (os *OpenStack) GetPort(name string) (*ports.Port, error) {
 		}
 
 		if len(portList) > 1 {
-			return false, networkprovider.ErrMultipleResults
+			return false, ErrMultipleResults
 		}
 
 		if len(portList) == 0 {
-			return false, networkprovider.ErrNotFound
+			return false, ErrNotFound
 		}
 
 		port = &portList[0]
@@ -831,7 +834,7 @@ func (os *OpenStack) GetPort(name string) (*ports.Port, error) {
 // Delete port by portName
 func (os *OpenStack) DeletePort(portName string) error {
 	port, err := os.GetPort(portName)
-	if err == networkprovider.ErrNotFound {
+	if err == ErrNotFound {
 		glog.V(4).Infof("Port %s already deleted", portName)
 		return nil
 	} else if err != nil {
@@ -871,21 +874,21 @@ func (os *OpenStack) getPoolByName(name string) (*pools.Pool, error) {
 		}
 		poolList = append(poolList, p...)
 		if len(poolList) > 1 {
-			return false, networkprovider.ErrMultipleResults
+			return false, ErrMultipleResults
 		}
 		return true, nil
 	})
 	if err != nil {
 		if isNotFound(err) {
-			return nil, networkprovider.ErrNotFound
+			return nil, ErrNotFound
 		}
 		return nil, err
 	}
 
 	if len(poolList) == 0 {
-		return nil, networkprovider.ErrNotFound
+		return nil, ErrNotFound
 	} else if len(poolList) > 1 {
-		return nil, networkprovider.ErrMultipleResults
+		return nil, ErrMultipleResults
 	}
 
 	return &poolList[0], nil
@@ -920,28 +923,28 @@ func (os *OpenStack) getVipByOpts(opts vips.ListOpts) (*vips.VirtualIP, error) {
 		}
 		vipList = append(vipList, v...)
 		if len(vipList) > 1 {
-			return false, networkprovider.ErrMultipleResults
+			return false, ErrMultipleResults
 		}
 		return true, nil
 	})
 	if err != nil {
 		if isNotFound(err) {
-			return nil, networkprovider.ErrNotFound
+			return nil, ErrNotFound
 		}
 		return nil, err
 	}
 
 	if len(vipList) == 0 {
-		return nil, networkprovider.ErrNotFound
+		return nil, ErrNotFound
 	} else if len(vipList) > 1 {
-		return nil, networkprovider.ErrMultipleResults
+		return nil, ErrMultipleResults
 	}
 
 	return &vipList[0], nil
 }
 
 // Get load balancer by name
-func (os *OpenStack) GetLoadBalancer(name string) (*networkprovider.LoadBalancer, error) {
+func (os *OpenStack) GetLoadBalancer(name string) (*provider.LoadBalancer, error) {
 	pool, err := os.getPoolByName(name)
 	if err != nil {
 		return nil, err
@@ -952,14 +955,14 @@ func (os *OpenStack) GetLoadBalancer(name string) (*networkprovider.LoadBalancer
 		return nil, err
 	}
 
-	var lb networkprovider.LoadBalancer
-	lb.UID = pool.ID
+	var lb provider.LoadBalancer
+	lb.Uid = pool.ID
 	lb.Name = pool.Name
 	lb.Status = pool.Status
-	lb.Type = networkprovider.LoadBalancerTypeTCP
+	lb.LoadBalanceType = "TCP"
 	lb.Vip = vip.Address
-	lb.Subnets = []*networkprovider.Subnet{{UID: vip.SubnetID}}
-	lb.Hosts = make([]*networkprovider.HostPort, 0, 1)
+	lb.Subnets = []*provider.Subnet{{Uid: vip.SubnetID}}
+	lb.Hosts = make([]*provider.HostPort, 0, 1)
 
 	pager := members.List(os.network, members.ListOpts{PoolID: pool.ID})
 	err = pager.EachPage(func(page pagination.Page) (bool, error) {
@@ -969,10 +972,10 @@ func (os *OpenStack) GetLoadBalancer(name string) (*networkprovider.LoadBalancer
 		}
 
 		for _, member := range memList {
-			host := networkprovider.HostPort{
-				IPAddress:   member.Address,
-				TargetPort:  member.ProtocolPort,
-				ServicePort: vip.ProtocolPort,
+			host := provider.HostPort{
+				Ipaddress:   member.Address,
+				TargetPort:  int32(member.ProtocolPort),
+				ServicePort: int32(vip.ProtocolPort),
 			}
 			lb.Hosts = append(lb.Hosts, &host)
 		}
@@ -987,7 +990,7 @@ func (os *OpenStack) GetLoadBalancer(name string) (*networkprovider.LoadBalancer
 }
 
 // Create load balancer
-func (os *OpenStack) CreateLoadBalancer(loadBalancer *networkprovider.LoadBalancer, affinity string) (string, error) {
+func (os *OpenStack) CreateLoadBalancer(loadBalancer *provider.LoadBalancer, affinity string) (string, error) {
 	if len(loadBalancer.ExternalIPs) > 1 {
 		return "", fmt.Errorf("multiple floatingips are not yet supported by openstack")
 	}
@@ -995,8 +998,8 @@ func (os *OpenStack) CreateLoadBalancer(loadBalancer *networkprovider.LoadBalanc
 	servicePort := 0
 	for _, p := range loadBalancer.Hosts {
 		if servicePort == 0 {
-			servicePort = p.ServicePort
-		} else if p.ServicePort != servicePort {
+			servicePort = int(p.ServicePort)
+		} else if int(p.ServicePort) != servicePort {
 			return "", fmt.Errorf("multiple ports are not yet supported in openstack load balancers")
 		}
 	}
@@ -1013,7 +1016,7 @@ func (os *OpenStack) CreateLoadBalancer(loadBalancer *networkprovider.LoadBalanc
 
 	glog.V(2).Info("Checking if openstack load balancer already exists: ", loadBalancer.Name)
 	_, err := os.getPoolByName(loadBalancer.Name)
-	if err != nil && err != networkprovider.ErrNotFound {
+	if err != nil && err != ErrNotFound {
 		return "", fmt.Errorf("error checking if openstack load balancer already exists: %v", err)
 	}
 
@@ -1031,7 +1034,7 @@ func (os *OpenStack) CreateLoadBalancer(loadBalancer *networkprovider.LoadBalanc
 	pool, err := pools.Create(os.network, pools.CreateOpts{
 		Name:     loadBalancer.Name,
 		Protocol: pools.ProtocolTCP,
-		SubnetID: loadBalancer.Subnets[0].UID,
+		SubnetID: loadBalancer.Subnets[0].Uid,
 		LBMethod: lbmethod,
 		TenantID: loadBalancer.TenantID,
 	}).Extract()
@@ -1042,8 +1045,8 @@ func (os *OpenStack) CreateLoadBalancer(loadBalancer *networkprovider.LoadBalanc
 	for _, host := range loadBalancer.Hosts {
 		_, err = members.Create(os.network, members.CreateOpts{
 			PoolID:       pool.ID,
-			ProtocolPort: host.TargetPort,
-			Address:      host.IPAddress,
+			ProtocolPort: int(host.TargetPort),
+			Address:      host.Ipaddress,
 			TenantID:     loadBalancer.TenantID,
 		}).Extract()
 		if err != nil {
@@ -1080,7 +1083,7 @@ func (os *OpenStack) CreateLoadBalancer(loadBalancer *networkprovider.LoadBalanc
 		Protocol:     "TCP",
 		ProtocolPort: servicePort,
 		PoolID:       pool.ID,
-		SubnetID:     loadBalancer.Subnets[0].UID,
+		SubnetID:     loadBalancer.Subnets[0].Uid,
 		Persistence:  persistence,
 		TenantID:     loadBalancer.TenantID,
 	}
@@ -1114,7 +1117,7 @@ func (os *OpenStack) CreateLoadBalancer(loadBalancer *networkprovider.LoadBalanc
 }
 
 // Update load balancer
-func (os *OpenStack) UpdateLoadBalancer(name string, hosts []*networkprovider.HostPort, externalIPs []string) (string, error) {
+func (os *OpenStack) UpdateLoadBalancer(name string, hosts []*provider.HostPort, externalIPs []string) (string, error) {
 	if len(externalIPs) > 1 {
 		return "", fmt.Errorf("multiple floatingips are not yet supported by openstack")
 	}
@@ -1130,9 +1133,9 @@ func (os *OpenStack) UpdateLoadBalancer(name string, hosts []*networkprovider.Ho
 	}
 
 	// Set of member (addresses) that _should_ exist
-	addrs := make(map[string]*networkprovider.HostPort)
+	addrs := make(map[string]*provider.HostPort)
 	for _, host := range hosts {
-		addrs[host.IPAddress] = host
+		addrs[host.Ipaddress] = host
 	}
 
 	// Iterate over members that _do_ exist
@@ -1167,8 +1170,8 @@ func (os *OpenStack) UpdateLoadBalancer(name string, hosts []*networkprovider.Ho
 		_, err := members.Create(os.network, members.CreateOpts{
 			TenantID:     lb.TenantID,
 			PoolID:       vip.PoolID,
-			Address:      addr.IPAddress,
-			ProtocolPort: addr.TargetPort,
+			Address:      addr.Ipaddress,
+			ProtocolPort: int(addr.TargetPort),
 		}).Extract()
 		if err != nil {
 			return "", err
@@ -1189,7 +1192,7 @@ func (os *OpenStack) UpdateLoadBalancer(name string, hosts []*networkprovider.Ho
 // Delete load balancer
 func (os *OpenStack) DeleteLoadBalancer(name string) error {
 	vip, err := os.getVipByName(name)
-	if err != nil && err != networkprovider.ErrNotFound {
+	if err != nil && err != ErrNotFound {
 		return err
 	}
 
@@ -1214,7 +1217,7 @@ func (os *OpenStack) DeleteLoadBalancer(name string) error {
 		// previous occasion.  Make a best effort attempt to
 		// cleanup any pools with the same name as the VIP.
 		pool, err = os.getPoolByName(name)
-		if err != nil && err != networkprovider.ErrNotFound {
+		if err != nil && err != ErrNotFound {
 			return err
 		}
 	}
@@ -1302,7 +1305,7 @@ func (os *OpenStack) CheckTenantID(tenantID string) (bool, error) {
 		}
 
 		if len(tenantList) == 0 {
-			return false, networkprovider.ErrNotFound
+			return false, ErrNotFound
 		}
 
 		for _, t := range tenantList {
@@ -1322,12 +1325,12 @@ func (os *OpenStack) BuildPortName(podName, namespace, networkID string) string 
 }
 
 // Setup pod
-func (os *OpenStack) SetupPod(podName, namespace, podInfraContainerID string, network *networkprovider.Network, containerRuntime string) error {
-	portName := os.BuildPortName(podName, namespace, network.UID)
+func (os *OpenStack) SetupPod(podName, namespace, podInfraContainerID string, network *provider.Network, containerRuntime string) error {
+	portName := os.BuildPortName(podName, namespace, network.Uid)
 
 	// get dns server ips
 	dnsServers := make([]string, 0, 1)
-	networkPorts, err := os.ListPorts(network.UID, "network:dhcp")
+	networkPorts, err := os.ListPorts(network.Uid, "network:dhcp")
 	if err != nil {
 		glog.Errorf("Query dhcp ports failed: %v", err)
 		return err
@@ -1338,14 +1341,14 @@ func (os *OpenStack) SetupPod(podName, namespace, podInfraContainerID string, ne
 
 	// get port from openstack; if port doesn't exist, create a new one
 	port, err := os.GetPort(portName)
-	if err == networkprovider.ErrNotFound || port == nil {
+	if err == ErrNotFound || port == nil {
 		podHostname := strings.Split(podName, "_")[0]
 		if len(podHostname) > hostnameMaxLen {
 			podHostname = podHostname[:hostnameMaxLen]
 		}
 
 		// Port not found, create one
-		port, err = os.CreatePort(network.UID, network.TenantID, portName, podHostname)
+		port, err = os.CreatePort(network.Uid, network.TenantID, portName, podHostname)
 		if err != nil {
 			glog.Errorf("CreatePort failed: %v", err)
 			return err
@@ -1368,7 +1371,7 @@ func (os *OpenStack) SetupPod(podName, namespace, podInfraContainerID string, ne
 	}
 
 	// setup interface for pod
-	_, cidr, _ := net.ParseCIDR(subnet.CIDR)
+	_, cidr, _ := net.ParseCIDR(subnet.Cidr)
 	prefixSize, _ := cidr.Mask.Size()
 	err = os.Plugin.SetupInterface(podName+"_"+namespace, podInfraContainerID, port,
 		fmt.Sprintf("%s/%d", port.FixedIPs[0].IPAddress, prefixSize),
@@ -1385,8 +1388,8 @@ func (os *OpenStack) SetupPod(podName, namespace, podInfraContainerID string, ne
 }
 
 // Teardown pod
-func (os *OpenStack) TeardownPod(podName, namespace, podInfraContainerID string, network *networkprovider.Network, containerRuntime string) error {
-	portName := os.BuildPortName(podName, namespace, network.UID)
+func (os *OpenStack) TeardownPod(podName, namespace, podInfraContainerID string, network *provider.Network, containerRuntime string) error {
+	portName := os.BuildPortName(podName, namespace, network.Uid)
 
 	// get port from openstack
 	port, err := os.GetPort(portName)
@@ -1420,9 +1423,9 @@ func (os *OpenStack) TeardownPod(podName, namespace, podInfraContainerID string,
 }
 
 // Status of pod
-func (os *OpenStack) PodStatus(podName, namespace, podInfraContainerID string, network *networkprovider.Network, containerRuntime string) (string, error) {
+func (os *OpenStack) PodStatus(podName, namespace, podInfraContainerID string, network *provider.Network, containerRuntime string) (string, error) {
 	ipAddress := ""
-	portName := os.BuildPortName(podName, namespace, network.UID)
+	portName := os.BuildPortName(podName, namespace, network.Uid)
 	port, err := os.GetPort(portName)
 	if err != nil {
 		return ipAddress, err
