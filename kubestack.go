@@ -31,9 +31,9 @@ const (
 
 func main() {
 	var (
-		version     bool
-		configFile  string
-		port 	    string
+		version    bool
+		configFile string
+		port       string
 	)
 
 	flag.BoolVar(&version, "version", false, "print version and exit")
