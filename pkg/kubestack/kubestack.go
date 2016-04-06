@@ -43,9 +43,10 @@ func NewKubeHandler(driver *common.OpenStack) *KubeHandler {
 }
 
 func (h *KubeHandler) Serve(addr string) error {
+	glog.V(1).Infof("Starting kubestack at %s", addr)
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
-		glog.Fatal("Failed to listen: %s", addr)
+		glog.Fatalf("Failed to listen: %s", addr)
 		return err
 	}
 	return h.server.Serve(l)
