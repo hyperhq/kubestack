@@ -351,34 +351,39 @@ func (p *OVSPlugin) SetupInterface(podName, podInfraContainerID string, port *po
 	return nil
 }
 
-func (p *OVSPlugin) destroyOVSInterface(podName, podInfraContainerID string, port *ports.Port) error {
-	_, qvo := p.buildVethName(port.ID)
-	_, err := exec.RunCommand("ip", "link", "delete", qvo)
+func (p *OVSPlugin) destroyOVSInterface(podName, podInfraContainerID, portID string) error {
+	_, qvo := p.buildVethName(portID)
+	output, err := exec.RunCommand("ip", "link", "set", "dev", qvo, "down")
 	if err != nil {
-		glog.V(5).Infof("Warning: DestroyInterface failed: %v", err)
+		glog.Warningf("Warning: DestroyInterface failed: %v, %v", output, err)
 	}
 
-	_, err = exec.RunCommand("ovs-vsctl", "-vconsole:off", "--if-exists", "del-port", qvo)
+	output, err = exec.RunCommand("ip", "link", "delete", "dev", qvo)
 	if err != nil {
-		glog.V(5).Infof("Warning: DestroyInterface failed: %v", err)
+		glog.Warningf("Warning: DestroyInterface failed: %v, %v", output, err)
 	}
 
-	bridge := p.buildBridgeName(port.ID)
-	_, err = exec.RunCommand("ip", "link", "set", bridge, "down")
+	output, err = exec.RunCommand("ovs-vsctl", "-vconsole:off", "--if-exists", "del-port", qvo)
 	if err != nil {
-		glog.V(5).Infof("Warning: DestroyInterface failed: %v", err)
+		glog.Warningf("Warning: DestroyInterface failed: %v, %v", output, err)
 	}
 
-	_, err = exec.RunCommand("brctl", "delbr", bridge)
+	bridge := p.buildBridgeName(portID)
+	output, err = exec.RunCommand("ip", "link", "set", "dev", bridge, "down")
 	if err != nil {
-		glog.V(5).Infof("Warning: DestroyInterface failed: %v", err)
+		glog.Warningf("Warning: DestroyInterface failed: %v, %v", output, err)
+	}
+
+	output, err = exec.RunCommand("brctl", "delbr", bridge)
+	if err != nil {
+		glog.Warningf("Warning: DestroyInterface failed: %v, %v", output, err)
 	}
 
 	return nil
 }
 
-func (p *OVSPlugin) destroyDockerInterface(podName, podInfraContainerID string, port *ports.Port) error {
-	tapName, _ := p.buildTapName(port.ID)
+func (p *OVSPlugin) destroyDockerInterface(podName, podInfraContainerID, portID string) error {
+	tapName, _ := p.buildTapName(portID)
 	_, err := exec.RunCommand("ip", "link", "delete", tapName)
 	if err != nil {
 		glog.V(5).Infof("Warning: DestroyInterface failed: %v", err)
@@ -401,11 +406,11 @@ func (p *OVSPlugin) destroyDockerInterface(podName, podInfraContainerID string, 
 }
 
 func (p *OVSPlugin) DestroyInterface(podName, podInfraContainerID string, port *ports.Port, containerRuntime string) error {
-	p.destroyOVSInterface(podName, podInfraContainerID, port)
+	p.destroyOVSInterface(podName, podInfraContainerID, port.ID)
 
 	switch containerRuntime {
 	case runtimeTypeDocker:
-		p.destroyDockerInterface(podName, podInfraContainerID, port)
+		p.destroyDockerInterface(podName, podInfraContainerID, port.ID)
 	default:
 		glog.V(4).Infof("DestroyInterface for %s done", containerRuntime)
 	}

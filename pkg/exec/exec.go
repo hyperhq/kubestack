@@ -47,9 +47,9 @@ func RunCommand(cmd string, args ...string) ([]string, error) {
 		return nil, err
 	}
 
-	output, err := command.Output()
+	output, err := command.CombinedOutput()
 	if err != nil {
-		return nil, err
+		return []string{string(output)}, err
 	}
 	return strings.Split(strings.TrimSpace(string(output)), "\n"), nil
 }
