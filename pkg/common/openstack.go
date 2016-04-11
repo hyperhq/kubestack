@@ -1358,6 +1358,21 @@ func (os *OpenStack) SetupPod(podName, namespace, podInfraContainerID string, ne
 		return err
 	}
 
+	deviceOwner := fmt.Sprintf("compute:%s", getHostName())
+	if port.DeviceOwner != deviceOwner {
+		// Update hostname in order to make sure it is correct
+		updateOpts := ports.UpdateOpts{
+			HostID:      getHostName(),
+			DeviceOwner: deviceOwner,
+		}
+		_, err = ports.Update(os.network, port.ID, updateOpts).Extract()
+		if err != nil {
+			ports.Delete(os.network, port.ID)
+			glog.Errorf("Update port %s failed: %v", portName, err)
+			return err
+		}
+	}
+
 	glog.V(4).Infof("Pod %s's port is %v", podName, port)
 
 	// get subnet and gateway
