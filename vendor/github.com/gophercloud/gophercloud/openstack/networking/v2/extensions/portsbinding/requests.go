@@ -19,6 +19,8 @@ type CreateOpts struct {
 	ports.CreateOptsBuilder `json:"-"`
 	// The ID of the host where the port is allocated
 	HostID string `json:"binding:host_id,omitempty"`
+	// The dns name
+	DNSName string `json:"dns_name,omitempty"`
 	// The virtual network interface card (vNIC) type that is bound to the
 	// neutron port
 	VNICType string `json:"binding:vnic_type,omitempty"`
@@ -68,6 +70,8 @@ type UpdateOpts struct {
 	ports.UpdateOptsBuilder `json:"-"`
 	// The ID of the host where the port is allocated
 	HostID string `json:"binding:host_id,omitempty"`
+	// The dns name
+	DNSName string `json:"dns_name,omitempty"`
 	// The virtual network interface card (vNIC) type that is bound to the
 	// neutron port
 	VNICType string `json:"binding:vnic_type,omitempty"`
