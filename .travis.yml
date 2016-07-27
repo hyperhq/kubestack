@@ -1,11 +1,19 @@
+sudo: required
+dist: trusty
+
 language: go
 
 matrix:
   include:
     - go: 1.6
 
+install:
+  - sudo apt-get update -qq
+  - hack/install-protoc.sh
+
 script: 
   - cd ${TRAVIS_BUILD_DIR}
   - hack/verify-gofmt.sh
   - hack/verify-generated-proto.sh
   - make
+
