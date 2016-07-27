@@ -4,7 +4,7 @@
 all: kubestack
 
 kubestack:
-	godep go build kubestack.go
+	go build kubestack.go
 
 install:
 	cp -f kubestack /usr/local/bin/
