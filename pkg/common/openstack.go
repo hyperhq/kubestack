@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -29,23 +28,24 @@ import (
 	"code.google.com/p/gcfg"
 	"github.com/docker/distribution/uuid"
 	"github.com/golang/glog"
+	"github.com/gophercloud/gophercloud"
+	"github.com/gophercloud/gophercloud/openstack"
+	"github.com/gophercloud/gophercloud/openstack/identity/v2/tenants"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/floatingips"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/routers"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/lbaas/members"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/lbaas/monitors"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/lbaas/pools"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/lbaas/vips"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/portsbinding"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/security/groups"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/security/rules"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
+	"github.com/gophercloud/gophercloud/pagination"
 	"github.com/hyperhq/kubestack/pkg/plugins"
 	provider "github.com/hyperhq/kubestack/pkg/types"
-	"github.com/rackspace/gophercloud"
-	"github.com/rackspace/gophercloud/openstack"
-	"github.com/rackspace/gophercloud/openstack/identity/v2/tenants"
-	"github.com/rackspace/gophercloud/openstack/networking/v2/extensions/layer3/floatingips"
-	"github.com/rackspace/gophercloud/openstack/networking/v2/extensions/layer3/routers"
-	"github.com/rackspace/gophercloud/openstack/networking/v2/extensions/lbaas/members"
-	"github.com/rackspace/gophercloud/openstack/networking/v2/extensions/lbaas/monitors"
-	"github.com/rackspace/gophercloud/openstack/networking/v2/extensions/lbaas/pools"
-	"github.com/rackspace/gophercloud/openstack/networking/v2/extensions/lbaas/vips"
-	"github.com/rackspace/gophercloud/openstack/networking/v2/extensions/security/groups"
-	"github.com/rackspace/gophercloud/openstack/networking/v2/extensions/security/rules"
-	"github.com/rackspace/gophercloud/openstack/networking/v2/networks"
-	"github.com/rackspace/gophercloud/openstack/networking/v2/ports"
-	"github.com/rackspace/gophercloud/openstack/networking/v2/subnets"
-	"github.com/rackspace/gophercloud/pagination"
 
 	// import plugins
 	_ "github.com/hyperhq/kubestack/pkg/plugins/openvswitch"
@@ -61,8 +61,12 @@ const (
 	ServiceAffinityClientIP = "ClientIP"
 )
 
-var ErrNotFound = errors.New("NotFound")
-var ErrMultipleResults = errors.New("MultipleResults")
+var (
+	adminStateUp = true
+
+	ErrNotFound        = errors.New("NotFound")
+	ErrMultipleResults = errors.New("MultipleResults")
+)
 
 // encoding.TextUnmarshaler interface for time.Duration
 type MyDuration struct {
@@ -109,7 +113,7 @@ type Config struct {
 		Username   string `gcfg:"username"`
 		UserId     string `gcfg:"user-id"`
 		Password   string `gcfg: "password"`
-		ApiKey     string `gcfg:"api-key"`
+		TokenID    string `gcfg:"token-id"`
 		TenantId   string `gcfg:"tenant-id"`
 		TenantName string `gcfg:"tenant-name"`
 		DomainId   string `gcfg:"domain-id"`
@@ -127,7 +131,7 @@ func (cfg Config) toAuthOptions() gophercloud.AuthOptions {
 		Username:         cfg.Global.Username,
 		UserID:           cfg.Global.UserId,
 		Password:         cfg.Global.Password,
-		APIKey:           cfg.Global.ApiKey,
+		TokenID:          cfg.Global.TokenID,
 		TenantID:         cfg.Global.TenantId,
 		TenantName:       cfg.Global.TenantName,
 
@@ -150,7 +154,9 @@ func NewOpenStack(config io.Reader) (*OpenStack, error) {
 		return nil, err
 	}
 
-	identity, err := openstack.NewIdentityAdmin(provider)
+	identity, err := openstack.NewIdentityV2(provider, gophercloud.EndpointOpts{
+		Availability: gophercloud.AvailabilityAdmin,
+	})
 	if err != nil {
 		glog.Warning("Failed to find identity endpoint")
 		return nil, err
@@ -332,7 +338,7 @@ func (os *OpenStack) CreateNetwork(network *provider.Network) error {
 	// create network
 	opts := networks.CreateOpts{
 		Name:         network.Name,
-		AdminStateUp: networks.Up,
+		AdminStateUp: &adminStateUp,
 		TenantID:     network.TenantID,
 	}
 	osNet, err := networks.Create(os.network, opts).Extract()
@@ -367,9 +373,9 @@ func (os *OpenStack) CreateNetwork(network *provider.Network) error {
 			NetworkID:      networkID,
 			CIDR:           sub.Cidr,
 			Name:           sub.Name,
-			IPVersion:      subnets.IPv4,
+			IPVersion:      gophercloud.IPv4,
 			TenantID:       network.TenantID,
-			GatewayIP:      sub.Gateway,
+			GatewayIP:      &sub.Gateway,
 			DNSNameservers: sub.Dnsservers,
 		}
 		s, err := subnets.Create(os.network, subnetOpts).Extract()
@@ -383,7 +389,7 @@ func (os *OpenStack) CreateNetwork(network *provider.Network) error {
 		}
 
 		// add subnet to router
-		opts := routers.InterfaceOpts{
+		opts := routers.AddInterfaceOpts{
 			SubnetID: s.ID,
 		}
 		_, err = routers.AddInterface(os.network, osRouter.ID, opts).Extract()
@@ -473,7 +479,7 @@ func (os *OpenStack) DeleteNetwork(networkName string) error {
 		// delete all subnets
 		for _, subnet := range osNetwork.Subnets {
 			if router != nil {
-				opts := routers.InterfaceOpts{SubnetID: subnet}
+				opts := routers.RemoveInterfaceOpts{SubnetID: subnet}
 				_, err := routers.RemoveInterface(os.network, router.ID, opts).Extract()
 				if err != nil {
 					glog.Errorf("Get openstack router %s error: %v", networkName, err)
@@ -577,7 +583,7 @@ func (os *OpenStack) ensureSecurityGroup(tenantID string) (string, error) {
 	var secGroupsRules int
 	listopts := rules.ListOpts{
 		TenantID:   tenantID,
-		Direction:  rules.DirIngress,
+		Direction:  string(rules.DirIngress),
 		SecGroupID: securitygroup.ID,
 	}
 	rulesPager := rules.List(os.network, listopts)
@@ -603,7 +609,7 @@ func (os *OpenStack) ensureSecurityGroup(tenantID string) (string, error) {
 			TenantID:   tenantID,
 			SecGroupID: securitygroup.ID,
 			Direction:  rules.DirEgress,
-			EtherType:  rules.Ether4,
+			EtherType:  rules.EtherType4,
 		}).Extract()
 
 		// create ingress rule
@@ -611,7 +617,7 @@ func (os *OpenStack) ensureSecurityGroup(tenantID string) (string, error) {
 			TenantID:   tenantID,
 			SecGroupID: securitygroup.ID,
 			Direction:  rules.DirIngress,
-			EtherType:  rules.Ether4,
+			EtherType:  rules.EtherType4,
 		}).Extract()
 		if err != nil {
 			return "", err
@@ -622,36 +628,38 @@ func (os *OpenStack) ensureSecurityGroup(tenantID string) (string, error) {
 }
 
 // Create an port
-func (os *OpenStack) CreatePort(networkID, tenantID, portName, podHostname string) (*ports.Port, error) {
+func (os *OpenStack) CreatePort(networkID, tenantID, portName, podHostname string) (*portsbinding.Port, error) {
 	securitygroup, err := os.ensureSecurityGroup(tenantID)
 	if err != nil {
 		glog.Errorf("EnsureSecurityGroup failed: %v", err)
 		return nil, err
 	}
 
-	opts := ports.CreateOpts{
-		NetworkID:      networkID,
-		Name:           portName,
-		AdminStateUp:   ports.Up,
-		TenantID:       tenantID,
-		HostID:         getHostName(),
-		DeviceID:       uuid.Generate().String(),
-		DeviceOwner:    fmt.Sprintf("compute:%s", getHostName()),
-		DNSName:        podHostname,
-		SecurityGroups: []string{securitygroup},
+	opts := portsbinding.CreateOpts{
+		HostID:  getHostName(),
+		DNSName: podHostname,
+		CreateOptsBuilder: ports.CreateOpts{
+			NetworkID:      networkID,
+			Name:           portName,
+			AdminStateUp:   &adminStateUp,
+			TenantID:       tenantID,
+			DeviceID:       uuid.Generate().String(),
+			DeviceOwner:    fmt.Sprintf("compute:%s", getHostName()),
+			SecurityGroups: []string{securitygroup},
+		},
 	}
 
-	port, err := ports.Create(os.network, opts).Extract()
+	port, err := portsbinding.Create(os.network, opts).Extract()
 	if err != nil {
 		glog.Errorf("Create port %s failed: %v", portName, err)
 		return nil, err
 	}
 
 	// Update dns_name in order to make sure it is correct
-	updateOpts := ports.UpdateOpts{
+	updateOpts := portsbinding.UpdateOpts{
 		DNSName: podHostname,
 	}
-	_, err = ports.Update(os.network, port.ID, updateOpts).Extract()
+	_, err = portsbinding.Update(os.network, port.ID, updateOpts).Extract()
 	if err != nil {
 		ports.Delete(os.network, port.ID)
 		glog.Errorf("Update port %s failed: %v", portName, err)
@@ -854,8 +862,8 @@ func (os *OpenStack) DeletePort(portName string) error {
 }
 
 func isNotFound(err error) bool {
-	e, ok := err.(*gophercloud.UnexpectedResponseCodeError)
-	return ok && e.Actual == http.StatusNotFound
+	_, ok := err.(*gophercloud.ErrDefault404)
+	return ok
 }
 
 // Get OpenStack LBAAS pool by name
@@ -1027,9 +1035,9 @@ func (os *OpenStack) CreateLoadBalancer(loadBalancer *provider.LoadBalancer, aff
 		}
 	}
 
-	lbmethod := os.lbOpts.LBMethod
-	if lbmethod == "" {
-		lbmethod = pools.LBMethodRoundRobin
+	lbmethod := pools.LBMethodRoundRobin
+	if os.lbOpts.LBMethod != "" {
+		lbmethod = pools.LBMethod(os.lbOpts.LBMethod)
 	}
 	pool, err := pools.Create(os.network, pools.CreateOpts{
 		Name:     loadBalancer.Name,
@@ -1348,11 +1356,12 @@ func (os *OpenStack) SetupPod(podName, namespace, podInfraContainerID string, ne
 		}
 
 		// Port not found, create one
-		port, err = os.CreatePort(network.Uid, network.TenantID, portName, podHostname)
+		portWithBinding, err := os.CreatePort(network.Uid, network.TenantID, portName, podHostname)
 		if err != nil {
 			glog.Errorf("CreatePort failed: %v", err)
 			return err
 		}
+		port = &portWithBinding.Port
 	} else if err != nil {
 		glog.Errorf("GetPort failed: %v", err)
 		return err
@@ -1361,11 +1370,13 @@ func (os *OpenStack) SetupPod(podName, namespace, podInfraContainerID string, ne
 	deviceOwner := fmt.Sprintf("compute:%s", getHostName())
 	if port.DeviceOwner != deviceOwner {
 		// Update hostname in order to make sure it is correct
-		updateOpts := ports.UpdateOpts{
-			HostID:      getHostName(),
-			DeviceOwner: deviceOwner,
+		updateOpts := portsbinding.UpdateOpts{
+			HostID: getHostName(),
+			UpdateOptsBuilder: ports.UpdateOpts{
+				DeviceOwner: deviceOwner,
+			},
 		}
-		_, err = ports.Update(os.network, port.ID, updateOpts).Extract()
+		_, err = portsbinding.Update(os.network, port.ID, updateOpts).Extract()
 		if err != nil {
 			ports.Delete(os.network, port.ID)
 			glog.Errorf("Update port %s failed: %v", portName, err)
