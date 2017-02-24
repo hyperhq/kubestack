@@ -25,7 +25,7 @@ import (
 )
 
 type PluginInterface interface {
-	SetupInterface(podName, podInfraContainerID string, port *ports.Port, ipcidr, gateway string, dnsServers []string, containerRuntime string) error
+	SetupInterface(podName, podInfraContainerID, namespace string, port *ports.Port, ipcidr, gateway string, dnsServers []string, containerRuntime string) error
 	DestroyInterface(podName, podInfraContainerID string, port *ports.Port, containerRuntime string) error
 	Init(integrationBridge string) error
 }

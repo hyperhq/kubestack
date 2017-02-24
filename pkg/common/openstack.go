@@ -1399,7 +1399,7 @@ func (os *OpenStack) SetupPod(podName, namespace, podInfraContainerID string, ne
 	// setup interface for pod
 	_, cidr, _ := net.ParseCIDR(subnet.Cidr)
 	prefixSize, _ := cidr.Mask.Size()
-	err = os.Plugin.SetupInterface(podName+"_"+namespace, podInfraContainerID, port,
+	err = os.Plugin.SetupInterface(podName+"_"+namespace, podInfraContainerID, namespace, port,
 		fmt.Sprintf("%s/%d", port.FixedIPs[0].IPAddress, prefixSize),
 		subnet.Gateway, dnsServers, containerRuntime)
 	if err != nil {
