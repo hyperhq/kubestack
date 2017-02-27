@@ -20,12 +20,13 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/containernetworking/cni/pkg/types/current"
 	"github.com/golang/glog"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 )
 
 type PluginInterface interface {
-	SetupInterface(podName, podInfraContainerID, namespace string, port *ports.Port, ipcidr, gateway string, dnsServers []string, containerRuntime string) error
+	SetupInterface(podName, podInfraContainerID, namespace string, port *ports.Port, ipcidr, gateway string, dnsServers []string, containerRuntime string) (*current.Result, error)
 	DestroyInterface(podName, podInfraContainerID string, port *ports.Port, containerRuntime string) error
 	Init(integrationBridge string) error
 }

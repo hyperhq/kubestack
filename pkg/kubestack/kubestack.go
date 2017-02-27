@@ -208,7 +208,7 @@ func (h *KubeHandler) SetupPod(c context.Context, req *provider.SetupPodRequest)
 
 	resp := provider.CommonResponse{}
 	// TODO: Add hostname in SetupPod Interface
-	err := h.driver.SetupPod(req.PodName, req.Namespace, req.PodInfraContainerID, req.Network, req.ContainerRuntime)
+	_, err := h.driver.SetupPod(req.PodName, req.Namespace, req.PodInfraContainerID, req.Network, req.ContainerRuntime)
 	if err != nil {
 		glog.Errorf("SetupPod failed: %v", err)
 		resp.Error = err.Error()

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"code.google.com/p/gcfg"
+	"github.com/containernetworking/cni/pkg/types/current"
 	"github.com/docker/distribution/uuid"
 	"github.com/golang/glog"
 	"github.com/gophercloud/gophercloud"
@@ -1333,7 +1334,7 @@ func (os *OpenStack) BuildPortName(podName, namespace, networkID string) string 
 }
 
 // Setup pod
-func (os *OpenStack) SetupPod(podName, namespace, podInfraContainerID string, network *provider.Network, containerRuntime string) error {
+func (os *OpenStack) SetupPod(podName, namespace, podInfraContainerID string, network *provider.Network, containerRuntime string) (*current.Result, error) {
 	portName := os.BuildPortName(podName, namespace, network.Uid)
 
 	// get dns server ips
@@ -1341,7 +1342,7 @@ func (os *OpenStack) SetupPod(podName, namespace, podInfraContainerID string, ne
 	networkPorts, err := os.ListPorts(network.Uid, "network:dhcp")
 	if err != nil {
 		glog.Errorf("Query dhcp ports failed: %v", err)
-		return err
+		return nil, err
 	}
 	for _, p := range networkPorts {
 		dnsServers = append(dnsServers, p.FixedIPs[0].IPAddress)
@@ -1359,12 +1360,12 @@ func (os *OpenStack) SetupPod(podName, namespace, podInfraContainerID string, ne
 		portWithBinding, err := os.CreatePort(network.Uid, network.TenantID, portName, podHostname)
 		if err != nil {
 			glog.Errorf("CreatePort failed: %v", err)
-			return err
+			return nil, err
 		}
 		port = &portWithBinding.Port
 	} else if err != nil {
 		glog.Errorf("GetPort failed: %v", err)
-		return err
+		return nil, err
 	}
 
 	deviceOwner := fmt.Sprintf("compute:%s", getHostName())
@@ -1380,7 +1381,7 @@ func (os *OpenStack) SetupPod(podName, namespace, podInfraContainerID string, ne
 		if err != nil {
 			ports.Delete(os.network, port.ID)
 			glog.Errorf("Update port %s failed: %v", portName, err)
-			return err
+			return nil, err
 		}
 	}
 
@@ -1393,13 +1394,13 @@ func (os *OpenStack) SetupPod(podName, namespace, podInfraContainerID string, ne
 		if nil != ports.Delete(os.network, port.ID).ExtractErr() {
 			glog.Warningf("Delete port %s failed", port.ID)
 		}
-		return err
+		return nil, err
 	}
 
 	// setup interface for pod
 	_, cidr, _ := net.ParseCIDR(subnet.Cidr)
 	prefixSize, _ := cidr.Mask.Size()
-	err = os.Plugin.SetupInterface(podName+"_"+namespace, podInfraContainerID, namespace, port,
+	result, err := os.Plugin.SetupInterface(podName+"_"+namespace, podInfraContainerID, namespace, port,
 		fmt.Sprintf("%s/%d", port.FixedIPs[0].IPAddress, prefixSize),
 		subnet.Gateway, dnsServers, containerRuntime)
 	if err != nil {
@@ -1407,10 +1408,10 @@ func (os *OpenStack) SetupPod(podName, namespace, podInfraContainerID string, ne
 		if nil != ports.Delete(os.network, port.ID).ExtractErr() {
 			glog.Warningf("Delete port %s failed", port.ID)
 		}
-		return err
+		return nil, err
 	}
 
-	return nil
+	return result, nil
 }
 
 // Teardown pod
