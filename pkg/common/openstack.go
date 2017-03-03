@@ -330,6 +330,56 @@ func (os *OpenStack) ToProviderStatus(status string) string {
 	return "Failed"
 }
 
+func (os *OpenStack) CreateNetworkCNI(network *provider.NetConf) error {
+	opts := networks.CreateOpts{
+		Name:     network.Name,
+		TenantID: network.TenantID,
+	}
+	osNet, err := networks.Create(os.network, opts).Extract()
+	if err != nil {
+		return fmt.Errorf("Create openstack network %s failed: %v", network.Name, err)
+	}
+
+	// create router
+	routerOpts := routers.CreateOpts{
+		Name:        network.Name,
+		TenantID:    network.TenantID,
+		GatewayInfo: &routers.GatewayInfo{NetworkID: os.ExtNetID},
+	}
+	osRouter, err := routers.Create(os.network, routerOpts).Extract()
+	if err != nil {
+		//os.DeleteNetwork(network.Name)
+		return fmt.Errorf("Create openstack router %s failed: %v", network.Name, err)
+	}
+
+	// create subnet and connect them to router
+	network.NetworkID = osNet.ID
+	subnetOpts := subnets.CreateOpts{
+		NetworkID: network.NetworkID,
+		CIDR:      network.SubnetCidr,
+		Name:      network.SubnetName,
+		IPVersion: gophercloud.IPv4,
+		TenantID:  network.TenantID,
+		GatewayIP: &network.SubnetGateway,
+	}
+	s, err := subnets.Create(os.network, subnetOpts).Extract()
+	if err != nil {
+		// os.DeleteNetwork(network.Name)
+		return fmt.Errorf("Create openstack subnet %s failed: %v", network.SubnetName, err)
+	}
+
+	// add subnet to router
+	addOpts := routers.AddInterfaceOpts{
+		SubnetID: s.ID,
+	}
+	_, err = routers.AddInterface(os.network, osRouter.ID, addOpts).Extract()
+	if err != nil {
+		return fmt.Errorf("Add openstack subnet %s to router %s failed: %v", network.SubnetName, err)
+	}
+
+	return nil
+}
+
 // Create network
 func (os *OpenStack) CreateNetwork(network *provider.Network) error {
 	if len(network.Subnets) == 0 {
@@ -637,8 +687,8 @@ func (os *OpenStack) CreatePort(networkID, tenantID, portName, podHostname strin
 	}
 
 	opts := portsbinding.CreateOpts{
-		HostID:  getHostName(),
-		DNSName: podHostname,
+		HostID: getHostName(),
+		//DNSName: podHostname,
 		CreateOptsBuilder: ports.CreateOpts{
 			NetworkID:      networkID,
 			Name:           portName,
@@ -657,15 +707,15 @@ func (os *OpenStack) CreatePort(networkID, tenantID, portName, podHostname strin
 	}
 
 	// Update dns_name in order to make sure it is correct
-	updateOpts := portsbinding.UpdateOpts{
-		DNSName: podHostname,
-	}
-	_, err = portsbinding.Update(os.network, port.ID, updateOpts).Extract()
-	if err != nil {
-		ports.Delete(os.network, port.ID)
-		glog.Errorf("Update port %s failed: %v", portName, err)
-		return nil, err
-	}
+	/*	updateOpts := portsbinding.UpdateOpts{
+			DNSName: podHostname,
+		}
+		_, err = portsbinding.Update(os.network, port.ID, updateOpts).Extract()
+		if err != nil {
+			ports.Delete(os.network, port.ID)
+			glog.Errorf("Update port %s failed: %v", portName, err)
+			return nil, err
+		}*/
 
 	return port, nil
 }
@@ -1331,6 +1381,58 @@ func (os *OpenStack) CheckTenantID(tenantID string) (bool, error) {
 
 func (os *OpenStack) BuildPortName(podName, namespace, networkID string) string {
 	return podNamePrefix + "_" + podName + "_" + namespace + "_" + networkID
+}
+
+func (os *OpenStack) SetupPodCNI(podName, namespace, podInfraContainerID string, network *provider.NetConf) (*current.Result, error) {
+	portName := os.BuildPortName(podName, namespace, network.NetworkID)
+
+	// get dns server ips
+	dnsServers := make([]string, 0, 1)
+	networkPorts, err := os.ListPorts(network.NetworkID, "network:dhcp")
+	if err != nil {
+		return nil, fmt.Errorf("Query dhcp ports failed: %v", err)
+	}
+	for _, p := range networkPorts {
+		dnsServers = append(dnsServers, p.FixedIPs[0].IPAddress)
+	}
+
+	// get port from openstack; if port doesn't exist, create a new one
+	port, err := os.GetPort(portName)
+	if err == ErrNotFound || port == nil {
+		/*		podHostname := strings.Split(podName, "_")[0]
+				if len(podHostname) > hostnameMaxLen {
+					podHostname = podHostname[:hostnameMaxLen]
+				}*/
+
+		// Port not found, create one
+		portWithBinding, err := os.CreatePort(network.NetworkID, network.TenantID, portName, "")
+		if err != nil {
+			return nil, fmt.Errorf("CreatePort failed: %v", err)
+		}
+		port = &portWithBinding.Port
+	} else if err != nil {
+		return nil, fmt.Errorf("GetPort failed: %v", err)
+	}
+
+	// get subnet and gateway
+	subnet, err := os.getProviderSubnet(port.FixedIPs[0].SubnetID)
+	if err != nil {
+		//ports.Delete(os.network, port.ID).ExtractErr()
+		return nil, fmt.Errorf("Get info os subnet %s failed: %v", port.FixedIPs[0].SubnetID, err)
+	}
+
+	// setup interface for pod
+	_, cidr, _ := net.ParseCIDR(subnet.Cidr)
+	prefixSize, _ := cidr.Mask.Size()
+	result, err := os.Plugin.SetupInterface(podName+"_"+namespace, podInfraContainerID, namespace, port,
+		fmt.Sprintf("%s/%d", port.FixedIPs[0].IPAddress, prefixSize),
+		subnet.Gateway, dnsServers, "")
+	if err != nil {
+		//ports.Delete(os.network, port.ID).ExtractErr()
+		return nil, fmt.Errorf("SetupInterface failed: %v", err)
+	}
+
+	return result, nil
 }
 
 // Setup pod
