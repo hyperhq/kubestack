@@ -352,25 +352,10 @@ func (p *OVSPlugin) SetupInterface(podName, podInfraContainerID string, port *po
 }
 
 func (p *OVSPlugin) destroyOVSInterface(podName, podInfraContainerID, portID string) error {
-	qvb, qvo := p.buildVethName(portID)
+	_, qvo := p.buildVethName(portID)
 	bridge := p.buildBridgeName(portID)
 
-	output, err := exec.RunCommand("brctl", "delif", bridge, qvb)
-	if err != nil {
-		glog.Warningf("Warning: brctl delif %s failed: %v, %v", qvb, output, err)
-	}
-
-	output, err = exec.RunCommand("ip", "link", "set", "dev", bridge, "down")
-	if err != nil {
-		glog.Warningf("Warning: set bridge %s down failed: %v, %v", bridge, output, err)
-	}
-
-	output, err = exec.RunCommand("brctl", "delbr", bridge)
-	if err != nil {
-		glog.Warningf("Warning: delete bridge %s failed: %v, %v", bridge, output, err)
-	}
-
-	output, err = exec.RunCommand("ovs-vsctl", "-vconsole:off", "--if-exists", "del-port", qvo)
+	output, err := exec.RunCommand("ovs-vsctl", "-vconsole:off", "--if-exists", "del-port", qvo)
 	if err != nil {
 		glog.Warningf("Warning: ovs del-port %s failed: %v, %v", qvo, output, err)
 	}
@@ -383,6 +368,16 @@ func (p *OVSPlugin) destroyOVSInterface(podName, podInfraContainerID, portID str
 	output, err = exec.RunCommand("ip", "link", "delete", "dev", qvo)
 	if err != nil {
 		glog.Warningf("Warning: delete dev %s failed: %v, %v", qvo, output, err)
+	}
+
+	output, err = exec.RunCommand("ip", "link", "set", "dev", bridge, "down")
+	if err != nil {
+		glog.Warningf("Warning: set bridge %s down failed: %v, %v", bridge, output, err)
+	}
+
+	output, err = exec.RunCommand("brctl", "delbr", bridge)
+	if err != nil {
+		glog.Warningf("Warning: delete bridge %s failed: %v, %v", bridge, output, err)
 	}
 
 	return nil
