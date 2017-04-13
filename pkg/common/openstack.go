@@ -694,8 +694,12 @@ func (os *OpenStack) BindPortToFloatingip(portID, floatingIPAddress, tenantID st
 	}
 
 	if fip != nil {
-		// fip has already been used
 		if fip.PortID != "" {
+			if fip.PortID == portID {
+				glog.V(3).Infof("FIP %q has already been associated with port %q", floatingIPAddress, portID)
+				return nil
+			}
+			// fip has already been used
 			return fmt.Errorf("FloatingIP %v is already been binded to %v", floatingIPAddress, fip.PortID)
 		}
 
