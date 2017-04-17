@@ -17,18 +17,23 @@ limitations under the License.
 package main
 
 import (
-	"flag"
+	"encoding/json"
 	"fmt"
 	"os"
 
+	"github.com/containernetworking/cni/pkg/skel"
+	cnitypes "github.com/containernetworking/cni/pkg/types"
+	"github.com/containernetworking/cni/pkg/version"
 	"github.com/hyperhq/kubestack/pkg/common"
-	"github.com/hyperhq/kubestack/pkg/kubestack"
+	"github.com/hyperhq/kubestack/pkg/types"
 )
 
 const (
-	VERSION = "0.5"
+	VERSION    = "0.5"
+	CONFIGFILE = "/etc/kubestack/kubestack.conf"
 )
 
+/*
 func main() {
 	var (
 		version    bool
@@ -63,4 +68,48 @@ func main() {
 
 	server := kubestack.NewKubeHandler(openstack)
 	fmt.Println(server.Serve(port))
+}
+*/
+
+func loadNetConf(bytes []byte) (*types.NetConf, string, error) {
+	n := &types.NetConf{}
+	if err := json.Unmarshal(bytes, n); err != nil {
+		return nil, "", fmt.Errorf("failed to load netconf: %v", err)
+	}
+	return n, n.CNIVersion, nil
+}
+
+func cmdAdd(args *skel.CmdArgs) error {
+	config, err := os.Open(CONFIGFILE)
+	if err != nil {
+		return fmt.Errorf("Couldn't open configuration file %s: %#v", CONFIGFILE, err)
+	}
+	defer config.Close()
+
+	openstack, err := common.NewOpenStack(config)
+	if err != nil {
+		return fmt.Errorf("Couldn't initialize openstack: %#v", err)
+	}
+
+	n, cniVersion, err := loadNetConf(args.StdinData)
+	if err != nil {
+		return err
+	}
+
+	n.TenantID = openstack.ToTenantID(n.TenantName)
+	if err := openstack.CreateNetworkCNI(n); err != nil {
+		return err
+	}
+
+	result, err := openstack.SetupPodCNI(args.ContainerID, args.Netns, args.ContainerID, n)
+
+	return cnitypes.PrintResult(result, cniVersion)
+}
+
+func cmdDel(args *skel.CmdArgs) error {
+	return nil
+}
+
+func main() {
+	skel.PluginMain(cmdAdd, cmdDel, version.All)
 }
