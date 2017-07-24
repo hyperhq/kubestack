@@ -109,18 +109,18 @@ type OpenStack struct {
 
 type Config struct {
 	Global struct {
-		AuthUrl           string `gcfg:"auth-url"`
-		Username          string `gcfg:"username"`
-		UserId            string `gcfg:"user-id"`
-		Password          string `gcfg: "password"`
-		TokenID           string `gcfg:"token-id"`
-		TenantId          string `gcfg:"tenant-id"`
-		TenantName        string `gcfg:"tenant-name"`
-		DomainId          string `gcfg:"domain-id"`
-		DomainName        string `gcfg:"domain-name"`
-		Region            string `gcfg:"region"`
-		ExtNetID          string `gcfg:"ext-net-id"`
-		KeystoneVersion   string `gcfg:"keystone-version"`
+		AuthUrl         string `gcfg:"auth-url"`
+		Username        string `gcfg:"username"`
+		UserId          string `gcfg:"user-id"`
+		Password        string `gcfg: "password"`
+		TokenID         string `gcfg:"token-id"`
+		TenantId        string `gcfg:"tenant-id"`
+		TenantName      string `gcfg:"tenant-name"`
+		DomainId        string `gcfg:"domain-id"`
+		DomainName      string `gcfg:"domain-name"`
+		Region          string `gcfg:"region"`
+		ExtNetID        string `gcfg:"ext-net-id"`
+		KeystoneVersion string `gcfg:"keystone-version"`
 	}
 	LoadBalancer LoadBalancerOpts
 	Plugin       PluginOpts
