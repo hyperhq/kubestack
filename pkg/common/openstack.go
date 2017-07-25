@@ -109,17 +109,18 @@ type OpenStack struct {
 
 type Config struct {
 	Global struct {
-		AuthUrl    string `gcfg:"auth-url"`
-		Username   string `gcfg:"username"`
-		UserId     string `gcfg:"user-id"`
-		Password   string `gcfg: "password"`
-		TokenID    string `gcfg:"token-id"`
-		TenantId   string `gcfg:"tenant-id"`
-		TenantName string `gcfg:"tenant-name"`
-		DomainId   string `gcfg:"domain-id"`
-		DomainName string `gcfg:"domain-name"`
-		Region     string `gcfg:"region"`
-		ExtNetID   string `gcfg:"ext-net-id"`
+		AuthUrl         string `gcfg:"auth-url"`
+		Username        string `gcfg:"username"`
+		UserId          string `gcfg:"user-id"`
+		Password        string `gcfg: "password"`
+		TokenID         string `gcfg:"token-id"`
+		TenantId        string `gcfg:"tenant-id"`
+		TenantName      string `gcfg:"tenant-name"`
+		DomainId        string `gcfg:"domain-id"`
+		DomainName      string `gcfg:"domain-name"`
+		Region          string `gcfg:"region"`
+		ExtNetID        string `gcfg:"ext-net-id"`
+		KeystoneVersion string `gcfg:"keystone-version"`
 	}
 	LoadBalancer LoadBalancerOpts
 	Plugin       PluginOpts
@@ -134,6 +135,7 @@ func (cfg Config) toAuthOptions() gophercloud.AuthOptions {
 		TokenID:          cfg.Global.TokenID,
 		TenantID:         cfg.Global.TenantId,
 		TenantName:       cfg.Global.TenantName,
+		DomainName:       cfg.Global.DomainName,
 
 		// Persistent service, so we need to be able to renew tokens.
 		AllowReauth: true,
@@ -153,10 +155,16 @@ func NewOpenStack(config io.Reader) (*OpenStack, error) {
 		glog.Warning("Failed to auth openstack: %v", err)
 		return nil, err
 	}
-
-	identity, err := openstack.NewIdentityV2(provider, gophercloud.EndpointOpts{
-		Availability: gophercloud.AvailabilityAdmin,
-	})
+	var identity *gophercloud.ServiceClient
+	if cfg.Global.KeystoneVersion == "3" {
+		identity, err = openstack.NewIdentityV3(provider, gophercloud.EndpointOpts{
+			Availability: gophercloud.AvailabilityAdmin,
+		})
+	} else {
+		identity, err = openstack.NewIdentityV2(provider, gophercloud.EndpointOpts{
+			Availability: gophercloud.AvailabilityAdmin,
+		})
+	}
 	if err != nil {
 		glog.Warning("Failed to find identity endpoint")
 		return nil, err
